@@ -1,0 +1,876 @@
+{% extends 'base.html' %} {% block title %}Thêm mô hình mới{% endblock %} {%
+block extra_css %}
+<style>
+  .header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .form-section {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .form-section-title {
+    margin-bottom: 15px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .form-section-title i {
+    margin-right: 10px;
+  }
+
+  .sample-image {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+  }
+
+  .sample-table {
+    margin-top: 15px;
+  }
+
+  .sample-table th,
+  .sample-table td {
+    vertical-align: middle;
+    padding: 10px;
+  }
+
+  .action-buttons {
+    margin-top: 25px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .badge-label {
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    margin-right: 5px;
+    display: inline-block;
+    margin-bottom: 4px;
+  }
+
+  .required-field::after {
+    content: " *";
+    color: #dc3545;
+  }
+
+  .loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 2s linear infinite;
+    margin: 20px auto;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .modal-status {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    font-weight: 500;
+  }
+
+  .save-alert {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="header-container">
+  <h1 class="page-title">Thêm mô hình mới</h1>
+  <a href="{{ url_for('model_management') }}" class="btn btn-secondary">
+    <i class="fas fa-arrow-left"></i> Quay lại
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form
+      action="{{ url_for('route_add_model') }}"
+      method="post"
+      enctype="multipart/form-data"
+      id="addModelForm"
+    >
+      <!-- Thông tin mô hình mới section -->
+      <div class="form-section">
+        <div class="form-section-title">
+          <i class="fas fa-info-circle"></i> Thông tin mô hình mới
+        </div>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="model_name" class="form-label required-field"
+                >Tên mô hình</label
+              >
+              <input
+                type="text"
+                class="form-control"
+                id="model_name"
+                name="model_name"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="model_type" class="form-label required-field"
+                >Loại mô hình</label
+              >
+              <select
+                class="form-select"
+                id="model_type"
+                name="model_type"
+                required
+              >
+                <option value="">-- Chọn loại mô hình --</option>
+                {% for type in model_types %}
+                <option value="{{ type }}">{{ type }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="version" class="form-label required-field"
+                >Version</label
+              >
+              <input
+                type="text"
+                class="form-control"
+                id="version"
+                name="version"
+                placeholder="v1.0.0"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="description" class="form-label">Mô tả</label>
+              <textarea
+                class="form-control"
+                id="description"
+                name="description"
+                rows="7"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Thông số huấn luyện -->
+      <div class="form-section">
+        <div class="form-section-title">
+          <i class="fas fa-cog"></i> Thông số huấn luyện
+        </div>
+        <div class="row">
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label for="epochs" class="form-label">Số epochs</label>
+              <input
+                type="number"
+                class="form-control"
+                id="epochs"
+                name="epochs"
+                value="100"
+                min="1"
+                max="1000"
+              />
+              <div class="form-text">Số lần lặp lại toàn bộ dữ liệu</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label for="batch_size" class="form-label">Batch size</label>
+              <input
+                type="number"
+                class="form-control"
+                id="batch_size"
+                name="batch_size"
+                value="16"
+                min="1"
+                max="128"
+              />
+              <div class="form-text">Số lượng mẫu mỗi lần cập nhật</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label for="learning_rate" class="form-label"
+                >Learning rate</label
+              >
+              <input
+                type="number"
+                class="form-control"
+                id="learning_rate"
+                name="learning_rate"
+                value="0.001"
+                min="0.0001"
+                max="0.1"
+                step="0.0001"
+              />
+              <div class="form-text">Tốc độ học của thuật toán</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="mb-3">
+              <label for="image_size" class="form-label">Kích thước ảnh</label>
+              <input
+                type="number"
+                class="form-control"
+                id="image_size"
+                name="image_size"
+                value="640"
+                min="320"
+                max="1280"
+                step="32"
+              />
+              <div class="form-text">Kích thước ảnh đầu vào (pixel)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ảnh mẫu cho huấn luyện section -->
+      <div class="form-section">
+        <div class="form-section-title">
+          <i class="fas fa-images"></i> Ảnh mẫu cho huấn luyện
+        </div>
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i> Chọn ít nhất một ảnh mẫu để huấn
+          luyện mô hình. Ảnh mẫu nên có bounding box và nhãn đã được định nghĩa.
+        </div>
+        <div class="table-responsive sample-table">
+          <table class="table table-bordered">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 50px">Chọn</th>
+                <th>ID mẫu</th>
+                <th style="width: 100px">Ảnh</th>
+                <th>Nhãn</th>
+                <th>Ngày tạo</th>
+                <th>Bounding Box</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if sample_images %} {% for sample in sample_images %}
+              <tr>
+                <td class="text-center">
+                  <input
+                    class="form-check-input sample-checkbox"
+                    type="checkbox"
+                    name="sample_images[]"
+                    value="{{ sample.idTemplate }}"
+                    data-id="{{ sample.idTemplate }}"
+                  />
+                </td>
+                <td>{{ sample.idTemplate }}</td>
+                <td>
+                  <img
+                    src="{{ sample.imageUrl | default('/static/placeholder-camera.jpg') }}"
+                    class="sample-image"
+                    alt="Sample image"
+                  />
+                </td>
+                <td>
+                  {% if sample.labels %} {% for label in sample.labels %}
+                  <span class="badge bg-info badge-label"
+                    >{{ label.typeLabel }}</span
+                  >
+                  {% endfor %} {% endif %}
+                </td>
+                <td>{{ sample.timeUpdate }}</td>
+                <td>
+                  {% if sample.boundingBox %} {% for box in sample.boundingBox
+                  %}
+                  <span class="badge bg-warning badge-label">
+                    {{ box.xCenter }}, {{ box.yCenter }}, {{ box.width }}, {{
+                    box.height }}
+                  </span>
+                  {% endfor %} {% endif %}
+                </td>
+              </tr>
+              {% endfor %} {% else %}
+              <tr>
+                <td colspan="6" class="text-center">Chưa có ảnh mẫu nào</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <input type="hidden" name="model_file" id="model_file" value="" />
+      <input type="hidden" name="config_file" id="config_file" value="" />
+      <input type="hidden" name="accuracy" id="accuracy" value="0" />
+      <input type="hidden" id="trained" name="trained" value="false" />
+      <input
+        type="hidden"
+        id="training_success"
+        name="training_success"
+        value="false"
+      />
+      <input type="hidden" id="model_path" name="model_path" value="" />
+
+      <div class="action-buttons">
+        <div></div>
+        <div>
+          <a
+            href="{{ url_for('model_management') }}"
+            class="btn btn-secondary me-2"
+          >
+            <i class="fas fa-times"></i> Hủy
+          </a>
+          <button
+            type="button"
+            class="btn btn-primary me-2"
+            id="trainModelBtn"
+            disabled
+          >
+            <i class="fas fa-cogs"></i> Huấn luyện
+          </button>
+          <button type="submit" class="btn btn-success fade" id="saveModelBtn">
+            <i class="fas fa-save"></i> Lưu mô hình
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal huấn luyện đơn giản -->
+<div class="modal fade" id="trainingModal"
+  tabindex="-1"
+  aria-labelledby="trainingModalLabel"
+  aria-hidden="true"
+  data-bs-backdrop="static"
+  data-bs-keyboard="false"
+>
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="trainingModalLabel">Huấn luyện mô hình</h5>
+      </div>
+      <div class="modal-body text-center">
+        <div
+          class="spinner-border text-primary mb-4"
+          style="width: 3rem; height: 3rem"
+          role="status"
+        >
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5>Đang huấn luyện...</h5>
+        <p class="text-muted">
+          Quá trình này có thể mất vài phút. Vui lòng đợi.
+        </p>
+        <div class="alert alert-info mt-3">
+          Hệ thống đang huấn luyện mô hình. Quá trình này sẽ tự động diễn ra.
+          Vui lòng không đóng trang cho đến khi hoàn tất.
+        </div>
+        <!-- Progress bar và metrics sẽ được thêm vào bằng JavaScript -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" id="cancelTrainingBtn">
+          Hủy huấn luyện
+        </button>
+        <button
+          type="button"
+          class="btn btn-success"
+          id="finishTrainingBtn"
+          style="display: none"
+        >
+          Hoàn tất
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden fields cho form submission -->
+<input type="hidden" name="model_file" id="model_file" value="" />
+<input type="hidden" name="config_file" id="config_file" value="" />
+<input type="hidden" name="accuracy" id="accuracy" value="0" />
+<input type="hidden" id="trained" name="trained" value="false" />
+<input
+  type="hidden"
+  id="training_success"
+  name="training_success"
+  value="false"
+/>
+<input type="hidden" id="model_path" name="model_path" value="" />
+{% endblock %} {% block extra_js %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Biến lưu trạng thái huấn luyện
+    let modelId = null;
+    let trainingActive = false;
+    let checkStatusInterval = null;
+    
+    // Modal huấn luyện
+    const trainingModal = new bootstrap.Modal(
+      document.getElementById("trainingModal")
+    );
+    
+    // Xử lý nút huấn luyện
+    document
+      .getElementById("trainModelBtn")
+      .addEventListener("click", function () {
+        // Reset trạng thái
+        modelId = null;
+        trainingActive = true;
+        
+        // Xóa interval cũ nếu có
+        if (checkStatusInterval) {
+          clearInterval(checkStatusInterval);
+        }
+        
+        // Reset UI về trạng thái ban đầu
+        // Khôi phục hiển thị spinner
+        document.querySelector(".spinner-border").style.display = "";
+        
+        // Reset tiêu đề và thông báo
+        document.querySelector(".modal-body h5").textContent = "Đang huấn luyện...";
+        
+        // Reset alert về trạng thái info ban đầu
+        const alertElement = document.querySelector(".modal-body .alert");
+        alertElement.className = "alert alert-info mt-3";
+        alertElement.innerHTML = 'Hệ thống đang huấn luyện mô hình. Quá trình này sẽ tự động diễn ra. Vui lòng không đóng trang cho đến khi hoàn tất.';
+        
+        // Xóa thông tin epoch cũ nếu có
+        const existingEpochInfo = document.querySelector('.modal-body .epoch-info');
+        if (existingEpochInfo) {
+          existingEpochInfo.remove();
+        }
+        
+        // Xóa bảng kết quả cũ nếu có
+        const existingResults = document.querySelector('.modal-body .training-results');
+        if (existingResults) {
+          existingResults.remove();
+        }
+        
+        // Reset trạng thái các nút
+        document.getElementById('cancelTrainingBtn').textContent = "Hủy huấn luyện";
+        document.getElementById('cancelTrainingBtn').style.display = "inline-block";
+        document.getElementById('finishTrainingBtn').style.display = "none";
+        
+        // Reset trạng thái nút lưu mô hình
+        document.getElementById('saveModelBtn').innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+        document.getElementById('saveModelBtn').classList.add('fade');
+        document.getElementById('trained').value = "false";
+        document.getElementById('training_success').value = "false";
+        
+        //show popup train
+        trainingModal.show();
+
+        //lấy các tham số
+        const modelName = document.getElementById("model_name").value;
+        const modelType = document.getElementById("model_type").value;
+        const version = document.getElementById("version").value;
+        const epochs = document.getElementById("epochs").value;
+        const batchSize = document.getElementById("batch_size").value;
+        const learningRate = document.getElementById("learning_rate").value;
+        const imageSize = document.getElementById("image_size").value;
+
+        // Lấy các template được chọn
+        const selectedTemplates = [];
+        document
+          .querySelectorAll(".sample-checkbox:checked")
+          .forEach((checkbox) => {
+            selectedTemplates.push(checkbox.dataset.id);
+          });
+
+        // Kiểm tra thông tin cần thiết
+        if (!modelName || !modelType || !version) {
+          alert("Vui lòng nhập đầy đủ thông tin mô hình!");
+          trainingModal.hide();
+          return false;
+        }
+
+        if (selectedTemplates.length === 0) {
+          alert("Vui lòng chọn ít nhất một mẫu dữ liệu huấn luyện!");
+          trainingModal.hide();
+          return false;
+        }
+
+        // Gửi yêu cầu huấn luyện đến API
+        fetch("/api/train-model", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model_id: 1000,
+            model_name: modelName,
+            model_type: modelType,
+            version: version,
+            epochs: parseInt(epochs),
+            batch_size: parseInt(batchSize),
+            learning_rate: parseFloat(learningRate),
+            image_size: parseInt(imageSize),
+            template_ids: selectedTemplates,
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              modelId = data.model_id;
+              console.log("Bắt đầu huấn luyện mô hình ID:", modelId);
+              // Kiểm tra trạng thái mỗi 2 giây để hiển thị tiến trình
+              checkStatusInterval = setInterval(checkTrainingStatus, 2000);
+            } else {
+              alert(data.message || "Lỗi khi bắt đầu huấn luyện");
+              trainingModal.hide();
+              trainingActive = false;
+            }
+          })
+          .catch((error) => {
+            console.error("Lỗi khi gửi yêu cầu huấn luyện:", error);
+            alert(
+              "Lỗi kết nối với máy chủ. Quá trình huấn luyện có thể đã bắt đầu, vui lòng kiểm tra sau."
+            );
+          });
+
+        return true;
+      });
+
+    // Hàm kiểm tra và cập nhật trạng thái huấn luyện
+    function checkTrainingStatus() {
+      if (!modelId || !trainingActive) return;
+      
+      console.log("Kiểm tra trạng thái huấn luyện cho mô hình ID:", modelId);
+      
+      fetch(`/api/training_status/${modelId}`)
+        .then((response) => response.json())
+        .then((data) => {
+          console.log("Trạng thái huấn luyện:", data.status, "Tiến độ:", data.progress, "Epoch:", data.current_epoch);
+          
+          updateTrainingUI(data);
+          
+          if (
+            data.status === "completed" ||
+            data.status === "failed" ||
+            data.status === "cancelled"
+          ) {
+            clearInterval(checkStatusInterval);
+            checkStatusInterval = null;
+
+            if (data.status === "completed") {
+              handleTrainingCompleted(data);
+            } else if (data.status === "failed") {
+              handleTrainingFailed(data);
+            } else if (data.status === "cancelled") {
+              handleTrainingCancelled();
+            }
+          }
+        })
+        .catch((error) => {
+          console.error("Lỗi khi kiểm tra trạng thái:", error);
+        });
+    }
+
+    // Cập nhật giao diện người dùng trong modal theo trạng thái huấn luyện
+    function updateTrainingUI(data) {
+      // Lấy thông tin trạng thái
+      const status = data.status;
+      const currentEpoch = data.current_epoch || 0;
+      const totalEpochs = data.total_epochs || 0;
+
+      // Cập nhật text trạng thái
+      let statusText = "Đang huấn luyện...";
+      if (status === "initializing") {
+        statusText = "Đang khởi tạo...";
+      } else if (status === "preparing_dataset") {
+        statusText = "Đang chuẩn bị dữ liệu...";
+      } else if (status === "training") {
+        statusText = `Đang huấn luyện...`;
+      } else if (status === "exporting") {
+        statusText = "Đang xuất mô hình...";
+      } else if (status === "completed") {
+        statusText = "Huấn luyện hoàn tất!";
+      }
+
+      // Hiển thị trạng thái
+      document.querySelector(".modal-body h5").textContent = statusText;
+
+      // Hiển thị thông tin epoch
+      let epochInfo = document.querySelector('.modal-body .epoch-info');
+      if (!epochInfo) {
+        const epochHTML = `
+          <div class="text-center mt-3 epoch-info">
+            <h5>Epoch: <span class="current-epoch">${currentEpoch}</span>/${totalEpochs}</h5>
+          </div>
+        `;
+        document.querySelector('.modal-body .alert').insertAdjacentHTML('beforebegin', epochHTML);
+      } else {
+        // Cập nhật thông tin epoch hiện có
+        const currentEpochElement = epochInfo.querySelector('.current-epoch');
+        if (currentEpochElement) {
+          currentEpochElement.textContent = currentEpoch;
+        }
+      }
+    }
+
+    // Xử lý khi huấn luyện hoàn tất
+    function handleTrainingCompleted(data) {
+      // Đánh dấu là hoàn tất và dừng kiểm tra
+      trainingActive = false;
+      
+      // Cập nhật trường hidden
+      document.getElementById("trained").value = "true";
+      document.getElementById("training_success").value = "true";
+
+      // Nếu có model_path, cập nhật vào form
+      if (data.model_path) {
+        document.getElementById("model_path").value = data.model_path;
+        document.getElementById("model_file").value = data.model_path;
+      }
+
+      // Cập nhật accuracy nếu có
+      if (data.accuracy || (data.metrics && data.metrics["metrics/mAP50(B)"])) {
+        const accuracy = data.accuracy || data.metrics["metrics/mAP50(B)"];
+        document.getElementById("accuracy").value = accuracy;
+      }
+
+      // Hiển thị nút hoàn tất
+      document.getElementById("finishTrainingBtn").style.display = "inline-block";
+      document.getElementById("cancelTrainingBtn").style.display = "none";
+
+      // Cập nhật thông báo
+      document.querySelector(".modal-body h5").textContent = "Huấn luyện đã hoàn tất!";
+      document.querySelector(".alert-info").className = "alert alert-success mt-3";
+      document.querySelector(".alert-success").innerHTML =
+        '<i class="fas fa-check-circle"></i> Mô hình đã được huấn luyện thành công! Bạn có thể lưu mô hình này.';
+      document.querySelector(".spinner-border").style.display = "none";
+
+      // Hiển thị bảng thông số kết quả
+      displayTrainingResults(data);
+
+      // Cập nhật nút lưu mô hình - hiển thị rõ nút này
+      document.getElementById("saveModelBtn").innerHTML =
+        '<i class="fas fa-save"></i> Lưu mô hình đã huấn luyện';
+      document.getElementById("saveModelBtn").classList.remove("fade");
+    }
+
+    // Hiển thị bảng kết quả chi tiết
+    function displayTrainingResults(data) {
+      const resultsHTML = `
+        <div class="training-results mt-4">
+          <h6>Kết quả huấn luyện:</h6>
+          <table class="table table-sm table-bordered">
+            <tbody>
+              <tr>
+                <th>Độ chính xác (mAP50)</th>
+                <td>${(
+                  (data.accuracy || data.metrics["metrics/mAP50(B)"]) * 100
+                ).toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <th>Precision</th>
+                <td>${(data.metrics["metrics/precision(B)"] * 100).toFixed(
+                  2
+                )}%</td>
+              </tr>
+              <tr>
+                <th>Recall</th>
+                <td>${(data.metrics["metrics/recall(B)"] * 100).toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <th>Thời gian huấn luyện</th>
+                <td>${Math.round(data.duration || 0)} giây</td>
+              </tr>
+              <tr>
+                <th>Số epoch</th>
+                <td>${data.total_epochs}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      // Thêm bảng kết quả vào modal
+      const existingResults = document.querySelector(
+        ".modal-body .training-results"
+      );
+      if (!existingResults) {
+        document
+          .querySelector(".modal-body")
+          .insertAdjacentHTML("beforeend", resultsHTML);
+      }
+    }
+
+    // Xử lý khi huấn luyện thất bại
+    function handleTrainingFailed(data) {
+      // Đánh dấu là đã dừng
+      trainingActive = false;
+      
+      // Hiển thị thông báo lỗi
+      document.querySelector(".modal-body h5").textContent = "Huấn luyện thất bại!";
+      
+      const alertElement = document.querySelector(".modal-body .alert");
+      alertElement.className = "alert alert-danger mt-3";
+      alertElement.innerHTML = `<i class="fas fa-exclamation-circle"></i> Có lỗi xảy ra trong quá trình huấn luyện: ${
+        data.error || "Lỗi không xác định"
+      }`;
+      
+      document.querySelector(".spinner-border").style.display = "none";
+
+      // Đổi nút hủy thành nút đóng
+      document.getElementById("cancelTrainingBtn").textContent = "Đóng";
+    }
+
+    // Xử lý khi huấn luyện bị hủy
+    function handleTrainingCancelled() {
+      // Đánh dấu là đã dừng
+      trainingActive = false;
+      
+      // Cập nhật UI
+      document.querySelector(".modal-body h5").textContent = "Huấn luyện đã bị hủy!";
+      
+      const alertElement = document.querySelector(".modal-body .alert");
+      alertElement.className = "alert alert-warning mt-3";
+      alertElement.innerHTML =
+        '<i class="fas fa-exclamation-triangle"></i> Quá trình huấn luyện đã bị hủy bỏ.';
+      
+      document.querySelector(".spinner-border").style.display = "none";
+
+      // Đổi nút hủy thành nút đóng
+      document.getElementById("cancelTrainingBtn").textContent = "Đóng";
+    }
+
+    // Xử lý nút hủy/đóng
+    document
+      .getElementById("cancelTrainingBtn")
+      .addEventListener("click", function () {
+        if (this.textContent === "Đóng") {
+          trainingModal.hide();
+          return;
+        }
+
+        if (confirm("Bạn có chắc chắn muốn hủy quá trình huấn luyện không?")) {
+          // Đánh dấu là đang hủy
+          trainingActive = false;
+          
+          // Gửi yêu cầu hủy
+          fetch(`/api/cancel_training/${modelId}`, {
+            method: "POST",
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                if (checkStatusInterval) {
+                  clearInterval(checkStatusInterval);
+                  checkStatusInterval = null;
+                }
+                handleTrainingCancelled();
+              } else {
+                alert(data.message || "Không thể hủy huấn luyện.");
+              }
+            })
+            .catch((error) => {
+              console.error("Lỗi khi hủy huấn luyện:", error);
+            });
+        }
+      });
+
+    // Xử lý nút hoàn tất
+    document
+      .getElementById("finishTrainingBtn")
+      .addEventListener("click", function () {
+        trainingModal.hide();
+        
+        // Hiển thị nút lưu mô hình rõ ràng
+        document.getElementById("saveModelBtn").classList.remove("fade");
+      });
+
+    // Xử lý nút lưu mô hình
+    document
+      .getElementById("saveModelBtn")
+      .addEventListener("click", function (e) {
+        // Chỉ xử lý đặc biệt nếu đã huấn luyện thành công
+        if (
+          document.getElementById("trained").value === "true" &&
+          document.getElementById("training_success").value === "true"
+        ) {
+          e.preventDefault();
+
+          // Hiển thị thông báo đang lưu
+          const saveAlert = document.createElement("div");
+          saveAlert.classList.add("alert", "alert-info", "save-alert");
+          saveAlert.innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i> Đang lưu thông tin mô hình...';
+          document.body.appendChild(saveAlert);
+
+          // Gửi yêu cầu lưu mô hình
+          fetch(`/api/save_trained_model/${modelId}`, {
+            method: "POST",
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                // Thay đổi thông báo thành công
+                saveAlert.classList.remove("alert-info");
+                saveAlert.classList.add("alert-success");
+                saveAlert.innerHTML =
+                  '<i class="fas fa-check-circle"></i> Đã lưu mô hình thành công! Đang chuyển hướng...';
+
+                // Tạo redirect thay vì submit form
+                setTimeout(() => {
+                  // Chuyển hướng trực tiếp đến trang quản lý mô hình
+                  window.location.href = "/model-management?saved=true";
+                }, 1500);
+              } else {
+                saveAlert.classList.remove("alert-info");
+                saveAlert.classList.add("alert-danger");
+                saveAlert.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${
+                  data.message || "Không thể lưu thông tin mô hình"
+                }`;
+                setTimeout(() => saveAlert.remove(), 5000);
+              }
+            })
+            .catch((error) => {
+              console.error("Lỗi khi lưu mô hình:", error);
+              saveAlert.classList.remove("alert-info");
+              saveAlert.classList.add("alert-danger");
+              saveAlert.innerHTML =
+                '<i class="fas fa-exclamation-circle"></i> Lỗi kết nối với máy chủ. Vui lòng thử lại.';
+              setTimeout(() => saveAlert.remove(), 5000);
+            });
+        }
+      });
+
+    // Kiểm tra checkbox mẫu
+    function updateTrainButton() {
+      const hasSelectedTemplates =
+        document.querySelectorAll(".sample-checkbox:checked").length > 0;
+      document.getElementById("trainModelBtn").disabled = !hasSelectedTemplates;
+    }
+
+    // Lắng nghe sự kiện thay đổi checkbox
+    document.querySelectorAll(".sample-checkbox").forEach((checkbox) => {
+      checkbox.addEventListener("change", updateTrainButton);
+    });
+
+    // Kiểm tra ban đầu
+    updateTrainButton();
+  });
+</script>
+{% endblock %}
