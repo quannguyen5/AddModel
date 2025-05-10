@@ -1,9 +1,24 @@
+import os
 import train_model_utils
 from flask import Flask, redirect, request, url_for, jsonify
 from config.config import Config
 from flask import render_template
 from datetime import datetime
 import time
+import logging
+from dotenv import load_dotenv
+from kaggle_utils import kaggle_trainer
+
+# Load environment variables
+load_dotenv()
+
+# Khởi tạo Flask app
+app = Flask(__name__, static_folder='static', static_url_path='/static')
+app.secret_key = "8f42a73054b92c79c07935be5a17aa0ca383b783e4e321f3"
+
+# Thiết lập logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 # Import các DAOs
 from dao.model_dao import ModelDAO
 from dao.train_info_dao import TrainInfoDAO
@@ -18,9 +33,6 @@ from utils.enums import ModelType
 from models.train_info import TrainInfo
 from models.training_data import TrainingData
 from models.model import Model
-# Khởi tạo Flask app
-app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.secret_key = "8f42a73054b92c79c07935be5a17aa0ca383b783e4e321f3"
 
 # Khởi tạo các DAO
 model_dao = ModelDAO()
@@ -32,6 +44,22 @@ bounding_box_dao = BoundingBoxDAO()
 training_lost_dao = TrainingLostDAO()
 phase_detection_dao = PhaseDetectionDAO()
 detect_result_dao = DetectResultDAO()
+
+# Đảm bảo thư mục cần thiết tồn tại
+os.makedirs("datasets", exist_ok=True)
+os.makedirs("models", exist_ok=True)
+
+# Thiết lập Kaggle API credentials
+kaggle_username = os.getenv("KAGGLE_USERNAME")
+kaggle_key = os.getenv("KAGGLE_KEY")
+if kaggle_username and kaggle_key:
+    try:
+        kaggle_trainer.setup_credentials(kaggle_username, kaggle_key)
+        logging.info("✅ Kaggle API credentials đã được cấu hình thành công")
+    except Exception as e:
+        logging.error(f"❌ Lỗi khi cấu hình Kaggle API: {e}")
+else:
+    logging.warning("⚠️ Không tìm thấy Kaggle API credentials trong biến môi trường")
 
 
 @app.template_filter('fix_image_path')
@@ -95,12 +123,20 @@ def train_model():
     template_ids = data.get('template_ids', [])
     if not template_ids:
         return jsonify({'success': False, 'message': 'Vui lòng chọn ít nhất một template'})
+    
+    # Lấy model ID mới
     models = model_dao.get_all()
-    model_id = models[0].idModel + 1
+    model_id = 1000  # Default
+    if models and len(models) > 0:
+        model_id = models[0].idModel + 1
+    
+    # Lấy tham số training
     epochs = int(data.get('epochs', 100))
     batch_size = int(data.get('batch_size', 16))
     learning_rate = float(data.get('learning_rate', 0.001))
     image_size = int(data.get('image_size', 640))
+    
+    # Bắt đầu quá trình training
     result = train_model_utils.train_yolo_model(
         model_id=model_id,
         model_name=model_name,
@@ -112,10 +148,11 @@ def train_model():
         learning_rate=learning_rate,
         template_ids=template_ids
     )
+    
     return jsonify({
         'success': True,
         'model_id': model_id,
-        'message': result['message']
+        'message': result.get('message', 'Bắt đầu huấn luyện thành công')
     })
 
 
@@ -123,18 +160,13 @@ def train_model():
 def api_training_status(model_id):
     try:
         status = train_model_utils.get_training_status(model_id)
+        print(status)
         return jsonify(status)
     except Exception as e:
+        logging.error(f"Lỗi khi lấy trạng thái training: {e}")
         return jsonify({
-            'status': 'training',
-            'progress': 50,
-            'current_epoch': 6,
-            'total_epochs': 10,
-            'loss': 0.5,
-            'metrics': {
-                'metrics/mAP50(B)': 0.5
-            },
-            'error_info': str(e)
+            'status': 'error',
+            'error': str(e)
         })
 
 
@@ -145,7 +177,24 @@ def cancel_training(model_id):
         return jsonify({'success': True, 'message': 'Đã hủy quá trình huấn luyện'})
     else:
         return jsonify({'success': False, 'message': 'Không tìm thấy quá trình huấn luyện'})
-    pass
+
+
+@app.route('/api/download_model/<int:model_id>', methods=['POST'])
+def download_model(model_id):
+    """API tải model đã train từ Kaggle về máy"""
+    result = train_model_utils.download_trained_model(model_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': 'Tải model thành công',
+            'model_path': result['model_path']
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': result['message']
+        })
 
 
 @app.route('/api/save_trained_model/<int:model_id>', methods=['POST'])
@@ -196,7 +245,7 @@ def save_trained_model(model_id):
                 saved_epochs += 1
             except Exception as e:
                 logging.error(
-                    f"[SAVE_MODEL] Error creating TrainingLost for {epoch_key}: {str(e)}")
+                    f"[SAVE_MODEL] Lỗi khi tạo TrainingLost cho {epoch_key}: {str(e)}")
 
     model = Model(
         modelName=model_name,
@@ -209,9 +258,8 @@ def save_trained_model(model_id):
     model.trainInfo = train_info
     model_id_db = model_dao.create(model)
     template_ids = status.get("template_ids")
-    print(template_ids)
+    
     for image_id in template_ids:
-        print(image_id)
         template = fraud_template_dao.get_by_id(int(image_id))
         if template:
             training_data = TrainingData(
@@ -221,6 +269,7 @@ def save_trained_model(model_id):
                 timeUpdate=datetime.now()
             )
             training_data_dao.create(training_data)
+    
     train_model_utils.cleanup_training_data(model_id, keep_model=True)
 
     return jsonify({
