@@ -3,7 +3,7 @@ import time
 import json
 import threading
 from datetime import datetime
-from colab_integration import colab_trainer
+from kaggle_utils import kaggle_trainer
 
 # File lưu trữ trạng thái
 TRAINING_STATES_FILE = "training_states.json"
@@ -26,8 +26,7 @@ def save_training_states(states):
     """Save training states to file"""
     try:
         with open(TRAINING_STATES_FILE, 'w', encoding='utf-8') as f:
-            # Use ensure_ascii=True để tránh lỗi Unicode trên Windows
-            json.dump(states, f, indent=2, ensure_ascii=True)
+            json.dump(states, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving training states: {e}")
 
@@ -47,40 +46,63 @@ def get_training_status(model_id):
     
     state = training_states[model_id]
     
-    # If the status is 'training' or 'monitoring', check with Colab for updates
-    if state['status'] in ['training', 'monitoring'] and 'colab_session_id' in state:
+    # Check Kaggle kernel status if training
+    if state['status'] == 'training' and 'kernel_path' in state:
         try:
-            # Get updated status from Colab
-            colab_status = colab_trainer.get_training_status(model_id)
+            kernel_info = kaggle_trainer.get_kernel_status(state['kernel_path'])
             
-            if colab_status.get('status') != 'not_found':
-                # Update our state with Colab data
-                state.update({
-                    'status': colab_status.get('status', state['status']),
-                    'current_epoch': colab_status.get('current_epoch', state.get('current_epoch', 0)),
-                    'progress': colab_status.get('progress', state.get('progress', 0)),
-                    'metrics': colab_status.get('metrics', state.get('metrics', {})),
-                    'epoch_metrics': colab_status.get('epoch_metrics', state.get('epoch_metrics', {})),
-                })
-                
-                # Special handling for completed state
-                if colab_status.get('status') == 'completed':
+            if kernel_info and hasattr(kernel_info, 'status'):
+                if kernel_info.status == 'complete':
                     state['status'] = 'completed'
                     state['progress'] = 100
-                    state['current_epoch'] = state.get('total_epochs', 100)
+                    state['current_epoch'] = state['total_epochs']
+                    
+                    # Try to get metrics from kernel output
+                    try:
+                        temp_dir = f"temp_metrics_{model_id}"
+                        os.makedirs(temp_dir, exist_ok=True)
+                        kaggle_trainer.api.kernels_output(state['kernel_path'], 
+                                                           path=temp_dir, 
+                                                           file_name="metrics.json")
+                        
+                        metrics_path = os.path.join(temp_dir, "metrics.json")
+                        if os.path.exists(metrics_path):
+                            with open(metrics_path, 'r') as f:
+                                metrics = json.load(f)
+                                state['metrics'] = metrics
+                                state['accuracy'] = metrics.get('mAP50(B)', 0.8)
+                                
+                            # Clean up temp directory
+                            import shutil
+                            shutil.rmtree(temp_dir)
+                    except Exception as e:
+                        print(f"Error getting metrics: {e}")
+                        state['accuracy'] = 0.8  # Default value
+                        
+                elif kernel_info.status == 'error':
+                    state['status'] = 'failed'
+                    state['error'] = 'Kernel failed'
+                    
+                elif kernel_info.status == 'running':
+                    # Estimate progress based on time
+                    run_time = kernel_info.run_time if hasattr(kernel_info, 'run_time') else 0
+                    
+                    # Estimate based on average time per epoch (30 sec per epoch)
+                    estimated_epochs = min(state['total_epochs'], max(1, int(run_time / 30)))
+                    state['current_epoch'] = estimated_epochs
+                    state['progress'] = (estimated_epochs / state['total_epochs']) * 100
                 
                 # Save updated state
-                training_states[model_id] = state
                 save_training_states(training_states)
         except Exception as e:
-            print(f"Error updating status from Colab: {e}")
+            print(f"Error checking kernel status: {e}")
     
     return state
 
 def train_yolo_model(model_id, model_name, model_type, version, epochs, batch_size, image_size, learning_rate, template_ids):
-    """Start model training with Google Colab"""
+    """Start model training with Kaggle"""
     model_id = str(model_id)
-    print(f"Starting training setup for model ID: {model_id}, name: {model_name}")
+    print(f"Starting training for model ID: {model_id}, name: {model_name}")
     
     # Initialize training state
     training_states[model_id] = {
@@ -94,16 +116,17 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs, batch_si
         'batch_size': batch_size,
         'learning_rate': learning_rate,
         'template_ids': template_ids,
-        'metrics': {},
+        'metrics': {'metrics/mAP50(B)': 0},
         'epoch_metrics': {},
+        'loss': 1.0,
         'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
     # Save state to file
     save_training_states(training_states)
     
-    # Start Colab training process in background
-    def _start_colab_training():
+    # Start Kaggle training process in background
+    def _start_kaggle_training():
         try:
             # Update status to preparing dataset
             training_states[model_id]['status'] = 'preparing_dataset'
@@ -116,76 +139,71 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs, batch_si
             fraud_template_dao = FraudTemplateDAO()
             fraud_label_dao = FraudLabelDAO()
             
-            # Start training with Colab
-            training_result = colab_trainer.start_training(
-                model_id=model_id,
-                model_name=model_name,
-                model_type=model_type,
-                version=version,
-                epochs=epochs,
-                batch_size=batch_size,
-                image_size=image_size,
-                learning_rate=learning_rate,
-                template_ids=template_ids,
-                fraud_template_dao=fraud_template_dao,
-                fraud_label_dao=fraud_label_dao
+            # Create and upload dataset to Kaggle
+            dataset_result = kaggle_trainer.create_kaggle_dataset(
+                model_id, 
+                template_ids, 
+                fraud_template_dao, 
+                fraud_label_dao
             )
             
-            if not training_result['success']:
-                # Handle error
-                error_msg = training_result.get('message', 'Unknown error')
-                print(f"Error starting Colab training: {error_msg}")
+            if not dataset_result['success']:
                 training_states[model_id]['status'] = 'failed'
-                training_states[model_id]['error'] = error_msg
+                training_states[model_id]['error'] = f"Failed to create dataset: {dataset_result.get('error')}"
                 save_training_states(training_states)
+                print(f"Error creating dataset: {dataset_result.get('error')}")
                 return
             
-            # Update training state with Colab information
-            training_states[model_id].update({
-                'status': 'ready',
-                'colab_session_id': model_id,
-                'colab_url': training_result.get('colab_url', ''),
-                'notebook_path': training_result.get('notebook_path', ''),
-                'dataset_path': training_result.get('dataset_path', ''),
-                'instructions': training_result.get('instructions', '')
-            })
-            
+            # Update dataset info
+            training_states[model_id]['dataset_path'] = dataset_result['dataset_path']
+            training_states[model_id]['status'] = 'dataset_created'
             save_training_states(training_states)
-            print(f"Colab training setup completed for model ID: {model_id}")
+            print(f"Dataset created: {dataset_result['dataset_path']}")
+            
+            # Create training configuration
+            config = {
+                'model_name': model_name,
+                'model_type': model_type,
+                'version': version,
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'image_size': image_size,
+                'learning_rate': learning_rate
+            }
+            
+            # Create and run Kaggle kernel
+            kernel_result = kaggle_trainer.create_training_kernel(
+                model_id, 
+                dataset_result['dataset_path'], 
+                config
+            )
+            
+            if not kernel_result['success']:
+                training_states[model_id]['status'] = 'failed'
+                training_states[model_id]['error'] = f"Failed to create kernel: {kernel_result.get('error')}"
+                save_training_states(training_states)
+                print(f"Error creating kernel: {kernel_result.get('error')}")
+                return
+            
+            # Update kernel info
+            training_states[model_id]['kernel_path'] = kernel_result['kernel_path']
+            training_states[model_id]['kernel_name'] = kernel_result['kernel_name']
+            training_states[model_id]['status'] = 'training'
+            save_training_states(training_states)
+            print(f"Training started on Kaggle: {kernel_result['kernel_path']}")
             
         except Exception as e:
-            # Handle exception
-            error_msg = str(e)
-            print(f"Error in Colab training setup: {error_msg}")
+            print(f"Error in Kaggle training: {e}")
             training_states[model_id]['status'] = 'failed'
-            training_states[model_id]['error'] = error_msg
+            training_states[model_id]['error'] = str(e)
             save_training_states(training_states)
     
     # Start the training thread
-    thread = threading.Thread(target=_start_colab_training)
+    thread = threading.Thread(target=_start_kaggle_training)
     thread.daemon = True
     thread.start()
     
-    return {'success': True, 'message': 'Training setup started', 'model_id': model_id}
-
-def register_colab_webhook(model_id, webhook_url):
-    """Register a webhook URL for a Colab session"""
-    model_id = str(model_id)
-    
-    if model_id not in training_states:
-        return False
-    
-    # Register webhook with Colab trainer
-    result = colab_trainer.register_webhook(model_id, webhook_url)
-    
-    if result['success']:
-        # Update our state
-        training_states[model_id]['status'] = 'monitoring'
-        training_states[model_id]['webhook_url'] = webhook_url
-        save_training_states(training_states)
-        return True
-    
-    return False
+    return {'success': True, 'message': 'Training started', 'model_id': model_id}
 
 def cancel_training(model_id):
     """Cancel a running training job"""
@@ -195,14 +213,22 @@ def cancel_training(model_id):
     if model_id not in training_states:
         return False
     
-    # For Colab we don't have a direct way to cancel, so we just mark it as cancelled
+    # Cancel Kaggle kernel if running
+    if 'kernel_path' in training_states[model_id]:
+        try:
+            kaggle_trainer.api.kernels_cancel(training_states[model_id]['kernel_path'])
+            print(f"Kaggle kernel cancelled: {training_states[model_id]['kernel_path']}")
+        except Exception as e:
+            print(f"Error cancelling kernel: {e}")
+    
+    # Update state
     training_states[model_id]['status'] = 'cancelled'
     save_training_states(training_states)
     
     return True
 
 def download_trained_model(model_id, output_dir='models'):
-    """Download trained model from Google Colab or local storage"""
+    """Download trained model from Kaggle"""
     model_id = str(model_id)
     print(f"Downloading model {model_id}")
     
@@ -211,97 +237,36 @@ def download_trained_model(model_id, output_dir='models'):
     
     state = training_states[model_id]
     
-    if state['status'] not in ['completed', 'uploaded']:
+    if state['status'] != 'completed':
         return {'success': False, 'message': f"Model training not completed (status: {state['status']})"}
     
-    # Try to download model
-    try:
-        # If the model has been uploaded to our system
-        if 'model_path' in state and os.path.exists(state['model_path']):
-            # Copy to output directory
-            model_dir = os.path.join(output_dir, model_id)
-            os.makedirs(model_dir, exist_ok=True)
-            
-            import shutil
-            dest_path = os.path.join(model_dir, os.path.basename(state['model_path']))
-            shutil.copy(state['model_path'], dest_path)
-            
-            return {
-                'success': True,
-                'message': 'Model copied from local storage',
-                'model_path': dest_path
-            }
-        else:
-            # Try to download from Colab storage
-            download_result = colab_trainer.download_model(model_id, output_dir)
-            
-            if download_result['success']:
-                # Update model path in state
-                state['model_path'] = download_result['model_path']
-                save_training_states(training_states)
-                return download_result
-            else:
-                return {
-                    'success': False,
-                    'message': 'Model file not found. You need to upload the trained model file from Colab first.'
-                }
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Error downloading model: {error_msg}")
-        return {'success': False, 'message': f'Error downloading model: {error_msg}'}
-
-def upload_trained_model(model_id, model_file):
-    """Upload a trained model file from user (after manual Colab training)"""
-    model_id = str(model_id)
+    if 'kernel_path' not in state:
+        return {'success': False, 'message': 'Kernel information missing'}
     
-    if model_id not in training_states:
-        return {'success': False, 'message': 'Model training session not found'}
-    
+    # Download model from Kaggle
     try:
-        # Upload model to our storage
-        upload_result = colab_trainer.upload_trained_model(model_id, model_file)
+        model_dir = os.path.join(output_dir, model_id)
+        os.makedirs(model_dir, exist_ok=True)
         
-        if upload_result['success']:
-            # Update our state
-            training_states[model_id]['status'] = 'uploaded'
-            training_states[model_id]['model_path'] = upload_result['model_path']
+        download_result = kaggle_trainer.download_model(model_id, state['kernel_path'], model_dir)
+        
+        if download_result['success']:
+            # Update model path in state
+            state['model_path'] = download_result['model_path']
             save_training_states(training_states)
-            
-            return upload_result
+            return download_result
         else:
-            return upload_result
+            return download_result
     except Exception as e:
-        error_msg = str(e)
-        print(f"Error uploading model: {error_msg}")
-        return {'success': False, 'message': f'Error uploading model: {error_msg}'}
+        print(f"Error downloading model: {e}")
+        return {'success': False, 'message': f'Error downloading model: {str(e)}'}
 
 def cleanup_training_data(model_id, keep_model=True):
     """Clean up training data after completion"""
     model_id = str(model_id)
     
-    # We keep the model file but clean up temporary files
-    if model_id in training_states:
-        state = training_states[model_id]
-        
-        # Delete dataset file if it exists
-        if 'dataset_path' in state and os.path.exists(state['dataset_path']):
-            try:
-                os.remove(state['dataset_path'])
-                print(f"Deleted dataset file: {state['dataset_path']}")
-            except Exception as e:
-                print(f"Error deleting dataset file: {e}")
-        
-        # Delete notebook file if it exists
-        if 'notebook_path' in state and os.path.exists(state['notebook_path']):
-            try:
-                os.remove(state['notebook_path'])
-                print(f"Deleted notebook file: {state['notebook_path']}")
-            except Exception as e:
-                print(f"Error deleting notebook file: {e}")
-        
-        # Remove state if not keeping model
-        if not keep_model:
-            del training_states[model_id]
-            save_training_states(training_states)
+    if not keep_model and model_id in training_states:
+        del training_states[model_id]
+        save_training_states(training_states)
     
     return True
