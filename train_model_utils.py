@@ -1,9 +1,10 @@
+# train_model_utils.py
 import os
 import time
 import json
 import threading
 from datetime import datetime
-from kaggle_utils import kaggle_trainer
+from simple_trainer import trainer  # Sử dụng simple trainer
 
 # File lưu trữ trạng thái
 TRAINING_STATES_FILE = "training_states.json"
@@ -37,233 +38,266 @@ def get_training_status(model_id):
     """Get training status for a model"""
     model_id = str(model_id)
     
-    # Reload from file to get fresh data
-    global training_states
-    training_states = load_training_states()
-    
-    if model_id not in training_states:
-        return {'status': 'not_found'}
-    
-    state = training_states[model_id]
-    
-    # Check Kaggle kernel status if training
-    if state['status'] == 'training' and 'kernel_path' in state:
+    # Đọc trạng thái từ file
+    status_file = os.path.join('models', model_id, 'status.json')
+    if os.path.exists(status_file):
         try:
-            kernel_info = kaggle_trainer.get_kernel_status(state['kernel_path'])
+            with open(status_file, 'r', encoding='utf-8') as f:
+                status = json.load(f)
             
-            if kernel_info and hasattr(kernel_info, 'status'):
-                if kernel_info.status == 'complete':
-                    state['status'] = 'completed'
-                    state['progress'] = 100
-                    state['current_epoch'] = state['total_epochs']
-                    
-                    # Try to get metrics from kernel output
-                    try:
-                        temp_dir = f"temp_metrics_{model_id}"
-                        os.makedirs(temp_dir, exist_ok=True)
-                        kaggle_trainer.api.kernels_output(state['kernel_path'], 
-                                                           path=temp_dir, 
-                                                           file_name="metrics.json")
-                        
-                        metrics_path = os.path.join(temp_dir, "metrics.json")
-                        if os.path.exists(metrics_path):
-                            with open(metrics_path, 'r') as f:
-                                metrics = json.load(f)
-                                state['metrics'] = metrics
-                                state['accuracy'] = metrics.get('mAP50(B)', 0.8)
-                                
-                            # Clean up temp directory
-                            import shutil
-                            shutil.rmtree(temp_dir)
-                    except Exception as e:
-                        print(f"Error getting metrics: {e}")
-                        state['accuracy'] = 0.8  # Default value
-                        
-                elif kernel_info.status == 'error':
-                    state['status'] = 'failed'
-                    state['error'] = 'Kernel failed'
-                    
-                elif kernel_info.status == 'running':
-                    # Estimate progress based on time
-                    run_time = kernel_info.run_time if hasattr(kernel_info, 'run_time') else 0
-                    
-                    # Estimate based on average time per epoch (30 sec per epoch)
-                    estimated_epochs = min(state['total_epochs'], max(1, int(run_time / 30)))
-                    state['current_epoch'] = estimated_epochs
-                    state['progress'] = (estimated_epochs / state['total_epochs']) * 100
-                
-                # Save updated state
-                save_training_states(training_states)
+            # Cập nhật status vào file lưu trữ chung
+            training_states[model_id] = status
+            save_training_states(training_states)
+            
+            return status
         except Exception as e:
-            print(f"Error checking kernel status: {e}")
+            print(f"Error loading status file: {e}")
     
-    return state
+    # Nếu không có file, kiểm tra trong memory
+    if model_id in training_states:
+        return training_states[model_id]
+    
+    return {'status': 'not_found'}
 
 def train_yolo_model(model_id, model_name, model_type, version, epochs, batch_size, image_size, learning_rate, template_ids):
-    """Start model training with Kaggle"""
+    """Bắt đầu huấn luyện mô hình trên máy local sử dụng script riêng biệt"""
     model_id = str(model_id)
     print(f"Starting training for model ID: {model_id}, name: {model_name}")
     
-    # Initialize training state
-    training_states[model_id] = {
-        'status': 'initializing',
-        'progress': 0,
-        'model_name': model_name,
-        'model_type': model_type,
-        'version': version,
-        'current_epoch': 0,
-        'total_epochs': epochs,
-        'batch_size': batch_size,
-        'learning_rate': learning_rate,
-        'template_ids': template_ids,
-        'metrics': {'metrics/mAP50(B)': 0},
-        'epoch_metrics': {},
-        'loss': 1.0,
-        'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Import DAOs for data preparation
+    from dao.fraud_template_dao import FraudTemplateDAO
+    from dao.fraud_label_dao import FraudLabelDAO
+    from dao.bounding_box_dao import BoundingBoxDAO
+    
+    fraud_template_dao = FraudTemplateDAO()
+    fraud_label_dao = FraudLabelDAO()
+    bounding_box_dao = BoundingBoxDAO()
+    
+    # Collect images and labels
+    template_images = []
+    template_labels = []
+    
+    for template_id in template_ids:
+        # Get template from database
+        template = fraud_template_dao.get_by_id(int(template_id))
+        
+        if not template:
+            print(f"Template ID not found: {template_id}")
+            continue
+        
+        # Get image path
+        image_path = template.imageUrl
+        if image_path.startswith('/'):
+            image_path = image_path[1:]  # Remove leading slash if present
+            
+        # Kiểm tra và chuyển đổi đường dẫn ảnh
+        if image_path.startswith('static/'):
+            image_path = os.path.join(os.getcwd(), image_path)
+        
+        # Debug log
+        print(f"Processing image: {image_path}")
+        
+        # Check if image file exists
+        if not os.path.exists(image_path):
+            print(f"Image file not found: {image_path}")
+            print(f"Trying alternative path...")
+            
+            # Thử tìm với đường dẫn tương đối
+            alt_path = os.path.join(os.getcwd(), image_path.lstrip('/'))
+            if os.path.exists(alt_path):
+                print(f"Found at alternative path: {alt_path}")
+                image_path = alt_path
+            else:
+                print(f"Alternative path not found either: {alt_path}")
+                continue
+        
+        # Get bounding boxes for this template
+        boxes = []
+        if template.boundingBox and len(template.boundingBox) > 0:
+            for box in template.boundingBox:
+                # Get class id from label
+                label = fraud_label_dao.get_by_id(box.fraudLabelId)
+                class_id = 0  # Default class
+                
+                if label and label.typeLabel:
+                    type_label = label.typeLabel
+                    if isinstance(type_label, str):
+                        if type_label == "HumanDetect":
+                            class_id = 0
+                        elif type_label == "literal":
+                            class_id = 1
+                
+                boxes.append({
+                    'class_id': class_id,
+                    'x_center': box.xCenter,
+                    'y_center': box.yCenter,
+                    'width': box.width,
+                    'height': box.height
+                })
+        
+        # Add to lists
+        template_images.append(image_path)
+        template_labels.append(boxes)
+    
+    # Check if we have any valid images
+    if not template_images:
+        print("No valid images found for training!")
+        return {
+            'success': False, 
+            'message': 'Không tìm thấy ảnh hợp lệ cho việc huấn luyện'
+        }
+    
+    print(f"Starting training with {len(template_images)} images")
+    
+    # Chuẩn bị thông số
+    model_dir = os.path.join('models', model_id)
+    os.makedirs(model_dir, exist_ok=True)
+    
+    # Lưu labels vào file
+    labels_file = os.path.join(model_dir, 'labels.json')
+    with open(labels_file, 'w', encoding='utf-8') as f:
+        json.dump(template_labels, f, indent=2, ensure_ascii=False)
+    
+    # Chuẩn bị trạng thái ban đầu
+    status_file = os.path.join(model_dir, 'status.json')
+    initial_status = {
+        "status": "initializing",
+        "progress": 0,
+        "model_name": model_name,
+        "model_type": model_type,
+        "version": version,
+        "current_epoch": 0,
+        "total_epochs": epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "metrics": {},
+        "epoch_metrics": {},
+        "start_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "template_ids": template_ids
     }
     
-    # Save state to file
+    # Lưu trạng thái
+    with open(status_file, 'w', encoding='utf-8') as f:
+        json.dump(initial_status, f, indent=2, ensure_ascii=False)
+    
+    # Cập nhật trạng thái lưu trữ
+    training_states[model_id] = initial_status
     save_training_states(training_states)
     
-    # Start Kaggle training process in background
-    def _start_kaggle_training():
-        try:
-            # Update status to preparing dataset
-            training_states[model_id]['status'] = 'preparing_dataset'
-            save_training_states(training_states)
-            
-            # Import DAOs for dataset preparation
-            from dao.fraud_template_dao import FraudTemplateDAO
-            from dao.fraud_label_dao import FraudLabelDAO
-            
-            fraud_template_dao = FraudTemplateDAO()
-            fraud_label_dao = FraudLabelDAO()
-            
-            # Create and upload dataset to Kaggle
-            dataset_result = kaggle_trainer.create_kaggle_dataset(
-                model_id, 
-                template_ids, 
-                fraud_template_dao, 
-                fraud_label_dao
-            )
-            
-            if not dataset_result['success']:
-                training_states[model_id]['status'] = 'failed'
-                training_states[model_id]['error'] = f"Failed to create dataset: {dataset_result.get('error')}"
-                save_training_states(training_states)
-                print(f"Error creating dataset: {dataset_result.get('error')}")
-                return
-            
-            # Update dataset info
-            training_states[model_id]['dataset_path'] = dataset_result['dataset_path']
-            training_states[model_id]['status'] = 'dataset_created'
-            save_training_states(training_states)
-            print(f"Dataset created: {dataset_result['dataset_path']}")
-            
-            # Create training configuration
-            config = {
-                'model_name': model_name,
-                'model_type': model_type,
-                'version': version,
-                'epochs': epochs,
-                'batch_size': batch_size,
-                'image_size': image_size,
-                'learning_rate': learning_rate
-            }
-            
-            # Create and run Kaggle kernel
-            kernel_result = kaggle_trainer.create_training_kernel(
-                model_id, 
-                dataset_result['dataset_path'], 
-                config
-            )
-            
-            if not kernel_result['success']:
-                training_states[model_id]['status'] = 'failed'
-                training_states[model_id]['error'] = f"Failed to create kernel: {kernel_result.get('error')}"
-                save_training_states(training_states)
-                print(f"Error creating kernel: {kernel_result.get('error')}")
-                return
-            
-            # Update kernel info
-            training_states[model_id]['kernel_path'] = kernel_result['kernel_path']
-            training_states[model_id]['kernel_name'] = kernel_result['kernel_name']
-            training_states[model_id]['status'] = 'training'
-            save_training_states(training_states)
-            print(f"Training started on Kaggle: {kernel_result['kernel_path']}")
-            
-        except Exception as e:
-            print(f"Error in Kaggle training: {e}")
-            training_states[model_id]['status'] = 'failed'
-            training_states[model_id]['error'] = str(e)
-            save_training_states(training_states)
+    # Chuẩn bị danh sách ảnh cho command line
+    images_param = ';'.join(template_images)
     
-    # Start the training thread
-    thread = threading.Thread(target=_start_kaggle_training)
-    thread.daemon = True
-    thread.start()
+    # Chạy script huấn luyện
+    cmd = f'python train_yolo.py --model_id={model_id} --model_name="{model_name}" --model_type="{model_type}" --version="{version}" --epochs={epochs} --batch_size={batch_size} --learning_rate={learning_rate} --image_size={image_size} --images="{images_param}" --labels="{labels_file}"'
     
-    return {'success': True, 'message': 'Training started', 'model_id': model_id}
+    print(f"Starting training process with command: {cmd}")
+    
+    # Bắt đầu quá trình huấn luyện trong process riêng biệt
+    import subprocess
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
+    
+    return {
+        "success": True,
+        "message": "Đã bắt đầu huấn luyện trên máy local",
+        "model_id": model_id
+    }
 
 def cancel_training(model_id):
     """Cancel a running training job"""
     model_id = str(model_id)
     print(f"Cancelling training for model ID: {model_id}")
     
-    if model_id not in training_states:
-        return False
+    # Tìm và kết thúc process Python đang chạy script train_yolo.py với model_id này
+    import subprocess
+    import platform
     
-    # Cancel Kaggle kernel if running
-    if 'kernel_path' in training_states[model_id]:
+    success = False
+    
+    try:
+        if platform.system() == "Windows":
+            # Tìm PID của process đang chạy
+            cmd = f'wmic process where "commandline like \'%train_yolo.py%--model_id={model_id}%\'" get processid'
+            result = subprocess.check_output(cmd, shell=True, text=True)
+            
+            # Lấy PID từ output
+            lines = result.strip().split('\n')
+            if len(lines) > 1:
+                pid = lines[1].strip()
+                if pid:
+                    # Kết thúc process
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True)
+                    success = True
+        else:
+            # Linux/Mac
+            cmd = f"pkill -f 'train_yolo.py.*--model_id={model_id}'"
+            subprocess.run(cmd, shell=True)
+            success = True
+    except Exception as e:
+        print(f"Error cancelling training: {e}")
+    
+    # Cập nhật trạng thái
+    if model_id in training_states:
+        training_states[model_id]['status'] = 'cancelled'
+        save_training_states(training_states)
+    
+    # Cập nhật file trạng thái
+    status_file = os.path.join('models', model_id, 'status.json')
+    if os.path.exists(status_file):
         try:
-            kaggle_trainer.api.kernels_cancel(training_states[model_id]['kernel_path'])
-            print(f"Kaggle kernel cancelled: {training_states[model_id]['kernel_path']}")
+            with open(status_file, 'r', encoding='utf-8') as f:
+                status = json.load(f)
+            
+            status['status'] = 'cancelled'
+            
+            with open(status_file, 'w', encoding='utf-8') as f:
+                json.dump(status, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"Error cancelling kernel: {e}")
+            print(f"Error updating status file: {e}")
     
-    # Update state
-    training_states[model_id]['status'] = 'cancelled'
-    save_training_states(training_states)
-    
-    return True
+    return success
 
 def download_trained_model(model_id, output_dir='models'):
-    """Download trained model from Kaggle"""
+    """Get trained model from output directory"""
     model_id = str(model_id)
-    print(f"Downloading model {model_id}")
+    print(f"Getting model {model_id}")
     
-    if model_id not in training_states:
-        return {'success': False, 'message': 'Model not found'}
+    model_dir = os.path.join(output_dir, model_id)
+    train_dir = os.path.join(model_dir, 'train')
+    weights_dir = os.path.join(train_dir, 'weights')
     
-    state = training_states[model_id]
+    if not os.path.exists(weights_dir):
+        return {'success': False, 'message': 'Model weights directory not found'}
     
-    if state['status'] != 'completed':
-        return {'success': False, 'message': f"Model training not completed (status: {state['status']})"}
+    # Check for model files (best.pt or last.pt)
+    best_model = os.path.join(weights_dir, 'best.pt')
+    last_model = os.path.join(weights_dir, 'last.pt')
     
-    if 'kernel_path' not in state:
-        return {'success': False, 'message': 'Kernel information missing'}
+    model_path = None
+    if os.path.exists(best_model):
+        model_path = best_model
+    elif os.path.exists(last_model):
+        model_path = last_model
     
-    # Download model from Kaggle
-    try:
-        model_dir = os.path.join(output_dir, model_id)
-        os.makedirs(model_dir, exist_ok=True)
-        
-        download_result = kaggle_trainer.download_model(model_id, state['kernel_path'], model_dir)
-        
-        if download_result['success']:
-            # Update model path in state
-            state['model_path'] = download_result['model_path']
-            save_training_states(training_states)
-            return download_result
-        else:
-            return download_result
-    except Exception as e:
-        print(f"Error downloading model: {e}")
-        return {'success': False, 'message': f'Error downloading model: {str(e)}'}
+    if not model_path:
+        return {'success': False, 'message': 'Model file not found'}
+    
+    # Update model path in state
+    if model_id in training_states:
+        training_states[model_id]['model_path'] = model_path
+        save_training_states(training_states)
+    
+    return {
+        'success': True,
+        'message': 'Model found',
+        'model_path': model_path
+    }
 
 def cleanup_training_data(model_id, keep_model=True):
     """Clean up training data after completion"""
     model_id = str(model_id)
+    
+    # Cleanup in trainer
+    trainer.cleanup_training_data(model_id, keep_model)
     
     if not keep_model and model_id in training_states:
         del training_states[model_id]

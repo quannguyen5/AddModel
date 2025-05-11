@@ -7,7 +7,6 @@ from datetime import datetime
 import time
 import logging
 from dotenv import load_dotenv
-from kaggle_utils import kaggle_trainer
 
 # Load environment variables
 load_dotenv()
@@ -48,18 +47,6 @@ detect_result_dao = DetectResultDAO()
 # Đảm bảo thư mục cần thiết tồn tại
 os.makedirs("datasets", exist_ok=True)
 os.makedirs("models", exist_ok=True)
-
-# Thiết lập Kaggle API credentials
-kaggle_username = os.getenv("KAGGLE_USERNAME")
-kaggle_key = os.getenv("KAGGLE_KEY")
-if kaggle_username and kaggle_key:
-    try:
-        kaggle_trainer.setup_credentials(kaggle_username, kaggle_key)
-        logging.info("✅ Kaggle API credentials đã được cấu hình thành công")
-    except Exception as e:
-        logging.error(f"❌ Lỗi khi cấu hình Kaggle API: {e}")
-else:
-    logging.warning("⚠️ Không tìm thấy Kaggle API credentials trong biến môi trường")
 
 
 @app.template_filter('fix_image_path')
@@ -181,13 +168,13 @@ def cancel_training(model_id):
 
 @app.route('/api/download_model/<int:model_id>', methods=['POST'])
 def download_model(model_id):
-    """API tải model đã train từ Kaggle về máy"""
+    """API lấy đường dẫn model đã train về máy"""
     result = train_model_utils.download_trained_model(model_id)
     
     if result['success']:
         return jsonify({
             'success': True,
-            'message': 'Tải model thành công',
+            'message': 'Lấy đường dẫn model thành công',
             'model_path': result['model_path']
         })
     else:
@@ -199,13 +186,20 @@ def download_model(model_id):
 
 @app.route('/api/save_trained_model/<int:model_id>', methods=['POST'])
 def save_trained_model(model_id):
+    # Lấy trạng thái huấn luyện
     status = train_model_utils.get_training_status(model_id)
+    if status.get('status') != 'completed':
+        return jsonify({
+            'success': False,
+            'message': f'Huấn luyện chưa hoàn thành (trạng thái: {status.get("status")})'
+        })
+    
     model_name = status.get('model_name', '')
     model_type = status.get('model_type', '')
     version = status.get('version', '')
 
+    # Kiểm tra mô hình đã tồn tại
     existing_models = model_dao.get_all()
-
     for existing_model in existing_models:
         if existing_model.modelName == model_name and existing_model.version == version:
             return jsonify({
@@ -213,6 +207,7 @@ def save_trained_model(model_id):
                 'message': f'Mô hình {model_name} phiên bản {version} đã tồn tại. Vui lòng thử lại.'
             })
 
+    # Tạo TrainInfo
     train_info = TrainInfo(
         epoch=status.get('total_epochs', 0),
         learningRate=status.get('learning_rate', 0.001),
@@ -224,10 +219,12 @@ def save_trained_model(model_id):
         timeTrain=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     )
 
+    # Lưu TrainInfo
     train_info_id = train_info_dao.create(train_info)
     train_info.idInfo = train_info_id
+    
+    # Lưu các giá trị loss của từng epoch
     epoch_metrics = status.get('epoch_metrics', {})
-
     saved_epochs = 0
     for epoch_key, metrics in epoch_metrics.items():
         if isinstance(epoch_key, str) and epoch_key.startswith('epoch_'):
@@ -247,6 +244,7 @@ def save_trained_model(model_id):
                 logging.error(
                     f"[SAVE_MODEL] Lỗi khi tạo TrainingLost cho {epoch_key}: {str(e)}")
 
+    # Tạo Model và lưu vào database
     model = Model(
         modelName=model_name,
         modelType=model_type,
@@ -257,10 +255,11 @@ def save_trained_model(model_id):
 
     model.trainInfo = train_info
     model_id_db = model_dao.create(model)
-    template_ids = status.get("template_ids")
     
-    for image_id in template_ids:
-        template = fraud_template_dao.get_by_id(int(image_id))
+    # Lưu dữ liệu huấn luyện
+    template_ids = status.get("template_ids", [])
+    for template_id in template_ids:
+        template = fraud_template_dao.get_by_id(int(template_id))
         if template:
             training_data = TrainingData(
                 modelId=model_id_db,
@@ -270,6 +269,7 @@ def save_trained_model(model_id):
             )
             training_data_dao.create(training_data)
     
+    # Dọn dẹp dữ liệu huấn luyện tạm thời
     train_model_utils.cleanup_training_data(model_id, keep_model=True)
 
     return jsonify({

@@ -108,6 +108,14 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById("trained").value = "false";
             document.getElementById("training_success").value = "false";
 
+            // Lưu model ID vào trường ẩn để sử dụng sau này
+            if (document.getElementById("modelId")) {
+              document.getElementById("modelId").value = modelId;
+            }
+
+            // Bắt đầu kiểm tra trạng thái ngay lập tức
+            checkTrainingStatus();
+
             // Kiểm tra trạng thái mỗi 3 giây để hiển thị tiến trình
             checkStatusInterval = setInterval(checkTrainingStatus, 3000);
           } else {
@@ -142,7 +150,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (
           data.status === "completed" ||
           data.status === "failed" ||
-          data.status === "cancelled"
+          data.status === "cancelled" ||
+          data.status === "not_found" // Trường hợp không tìm thấy trạng thái huấn luyện
         ) {
           clearInterval(checkStatusInterval);
           checkStatusInterval = null;
@@ -153,11 +162,19 @@ document.addEventListener("DOMContentLoaded", function () {
             handleTrainingFailed(data);
           } else if (data.status === "cancelled") {
             handleTrainingCancelled();
+          } else if (data.status === "not_found") {
+            // Xử lý trường hợp không tìm thấy trạng thái huấn luyện
+            showTrainingError(
+              "Không tìm thấy thông tin huấn luyện. Quá trình có thể đã kết thúc hoặc bị hủy."
+            );
           }
         }
       })
       .catch((error) => {
         console.error("Lỗi khi kiểm tra trạng thái:", error);
+        showTrainingError(
+          "Lỗi khi kiểm tra trạng thái huấn luyện: " + error.message
+        );
       });
   }
 
@@ -219,11 +236,21 @@ document.addEventListener("DOMContentLoaded", function () {
     } else if (status === "dataset_created") {
       statusText = "Đã tạo dataset, đang chuẩn bị huấn luyện...";
     } else if (status === "training") {
-      statusText = `Đang huấn luyện... (${Math.round(progress)}%)`;
+      // Thêm thông tin metrics nếu có
+      let metricsText = "";
+      if (data.metrics && Object.keys(data.metrics).length > 0) {
+        const mAP = (data.metrics["mAP50(B)"] || 0).toFixed(3);
+        const loss = (data.metrics["loss"] || 0).toFixed(3);
+        metricsText = ` (mAP: ${mAP}, Loss: ${loss})`;
+      }
+
+      statusText = `Đang huấn luyện... Epoch ${currentEpoch}/${totalEpochs}${metricsText}`;
     } else if (status === "exporting") {
       statusText = "Đang xuất mô hình...";
     } else if (status === "completed") {
       statusText = "Huấn luyện hoàn tất!";
+    } else if (status === "not_found") {
+      statusText = "Không tìm thấy thông tin huấn luyện";
     }
 
     // Hiển thị trạng thái
@@ -234,10 +261,12 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!epochInfo && totalEpochs > 0) {
       const epochHTML = `
                 <div class="text-center mt-3 epoch-info">
-                    <h5>Epoch: <span class="current-epoch">${currentEpoch}</span>/${totalEpochs}</h5>
+                    <h5>Tiến trình huấn luyện</h5>
                     <div class="progress mb-3">
                         <div class="progress-bar bg-primary" role="progressbar" style="width: ${progress}%" 
-                            aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"></div>
+                            aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+                            ${Math.round(progress)}%
+                        </div>
                     </div>
                 </div>
             `;
@@ -246,16 +275,12 @@ document.addEventListener("DOMContentLoaded", function () {
         .insertAdjacentHTML("beforebegin", epochHTML);
     } else if (epochInfo) {
       // Cập nhật thông tin epoch hiện có
-      const currentEpochElement = epochInfo.querySelector(".current-epoch");
       const progressBar = epochInfo.querySelector(".progress-bar");
-
-      if (currentEpochElement) {
-        currentEpochElement.textContent = currentEpoch;
-      }
 
       if (progressBar) {
         progressBar.style.width = `${progress}%`;
         progressBar.setAttribute("aria-valuenow", progress);
+        progressBar.textContent = `${Math.round(progress)}%`;
       }
     }
   }
@@ -301,6 +326,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Cập nhật nút lưu mô hình
     document.getElementById("saveModelBtn").innerHTML =
       '<i class="fas fa-save"></i> Lưu mô hình đã huấn luyện';
+    document.getElementById("saveModelBtn").classList.remove("fade");
   }
 
   // Hiển thị bảng kết quả chi tiết
@@ -308,10 +334,17 @@ document.addEventListener("DOMContentLoaded", function () {
     // Lấy metrics từ dữ liệu
     const accuracy =
       data.accuracy || (data.metrics && data.metrics["mAP50(B)"]) || 0;
-    const precision =
-      (data.metrics && data.metrics["metrics/precision(B)"]) || 0;
-    const recall = (data.metrics && data.metrics["metrics/recall(B)"]) || 0;
-    const duration = data.duration || 0;
+    const precision = (data.metrics && data.metrics["precision(B)"]) || 0;
+    const recall = (data.metrics && data.metrics["recall(B)"]) || 0;
+
+    // Tính duration từ start_time và end_time nếu có
+    let duration = data.duration || 0;
+    if (!duration && data.start_time && data.end_time) {
+      const startTime = new Date(data.start_time);
+      const endTime = new Date(data.end_time);
+      duration = (endTime - startTime) / 1000; // Convert to seconds
+    }
+
     const epochs = data.total_epochs || 0;
 
     const resultsHTML = `
@@ -366,10 +399,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const alertElement = document.querySelector(".modal-body .alert");
     alertElement.className = "alert alert-danger mt-3";
-    alertElement.innerHTML = `<i class="fas fa-exclamation-circle"></i> Có lỗi xảy ra trong quá trình huấn luyện: ${
-      data.error || "Lỗi không xác định"
-    }`;
 
+    // Hiển thị thông tin lỗi chi tiết nếu có
+    let errorMessage = data.error || "Lỗi không xác định";
+    if (data.traceback) {
+      errorMessage += `<details>
+        <summary>Chi tiết lỗi</summary>
+        <pre class="text-start" style="max-height: 200px; overflow: auto;">${data.traceback}</pre>
+      </details>`;
+    }
+
+    alertElement.innerHTML = `<i class="fas fa-exclamation-circle"></i> Có lỗi xảy ra trong quá trình huấn luyện: ${errorMessage}`;
     document.querySelector(".spinner-border").style.display = "none";
 
     // Đổi nút hủy thành nút đóng
@@ -424,7 +464,12 @@ document.addEventListener("DOMContentLoaded", function () {
         // Đánh dấu là đang hủy
         trainingActive = false;
 
-        // Gửi yêu cầu hủy
+        // Gửi yêu cầu hủy và hiển thị thông báo đang hủy
+        const alertElement = document.querySelector(".modal-body .alert");
+        alertElement.className = "alert alert-warning mt-3";
+        alertElement.innerHTML =
+          '<i class="fas fa-spinner fa-spin"></i> Đang hủy quá trình huấn luyện...';
+
         fetch(`/api/cancel_training/${modelId}`, {
           method: "POST",
         })
@@ -437,11 +482,14 @@ document.addEventListener("DOMContentLoaded", function () {
               }
               handleTrainingCancelled();
             } else {
-              alert(data.message || "Không thể hủy huấn luyện.");
+              alertElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${
+                data.message || "Không thể hủy huấn luyện."
+              }`;
             }
           })
           .catch((error) => {
             console.error("Lỗi khi hủy huấn luyện:", error);
+            alertElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Lỗi khi hủy huấn luyện: ${error.message}`;
           });
       }
     });
@@ -471,31 +519,16 @@ document.addEventListener("DOMContentLoaded", function () {
         const saveAlert = document.createElement("div");
         saveAlert.classList.add("alert", "alert-info", "save-alert");
         saveAlert.innerHTML =
-          '<i class="fas fa-spinner fa-spin"></i> Đang tải mô hình từ Kaggle...';
+          '<i class="fas fa-spinner fa-spin"></i> Đang tải mô hình để lưu...';
         document.body.appendChild(saveAlert);
 
-        // Tải model về từ Kaggle trước khi lưu
-        fetch(`/api/download_model/${modelId}`, {
+        // Lấy modelId từ trường ẩn
+        const modelId = document.getElementById("modelId").value;
+
+        // Lưu model vào database trực tiếp (không cần tải từ Kaggle nữa)
+        fetch(`/api/save_trained_model/${modelId}`, {
           method: "POST",
         })
-          .then((response) => response.json())
-          .then((downloadData) => {
-            if (downloadData.success) {
-              // Cập nhật model_path hidden field
-              document.getElementById("model_path").value =
-                downloadData.model_path;
-
-              // Tiếp tục với việc lưu model vào database
-              saveAlert.innerHTML =
-                '<i class="fas fa-spinner fa-spin"></i> Đang lưu thông tin mô hình...';
-
-              return fetch(`/api/save_trained_model/${modelId}`, {
-                method: "POST",
-              });
-            } else {
-              throw new Error(downloadData.message || "Không thể tải mô hình");
-            }
-          })
           .then((response) => response.json())
           .then((saveData) => {
             if (saveData.success) {
