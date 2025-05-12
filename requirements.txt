@@ -1,0 +1,17 @@
+# Web framework
+flask==2.3.3
+python-dotenv==1.0.0
+
+# Database
+mysql-connector-python==8.0.33
+
+# YOLOv8 and dependencies
+ultralytics==8.0.196
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python>=4.7.0.72
+numpy>=1.24.3
+Pillow>=9.5.0
+matplotlib>=3.7.1
+tqdm>=4.65.0
+PyYAML>=6.0

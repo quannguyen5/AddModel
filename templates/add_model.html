@@ -357,7 +357,7 @@ block extra_css %}
   </div>
 </div>
 
-<!-- Modal huấn luyện đơn giản -->
+<!-- Modal huấn luyện - thêm vào add_model.html trước khi kết thúc tag body -->
 <div class="modal fade" id="trainingModal"
   tabindex="-1"
   aria-labelledby="trainingModalLabel"
@@ -378,15 +378,20 @@ block extra_css %}
         >
           <span class="visually-hidden">Loading...</span>
         </div>
-        <h5>Đang huấn luyện...</h5>
+        <h5 id="trainingStatus">Đang khởi tạo...</h5>
         <p class="text-muted">
           Quá trình này có thể mất vài phút. Vui lòng đợi.
         </p>
-        <div class="alert alert-info mt-3">
-          Hệ thống đang huấn luyện mô hình. Quá trình này sẽ tự động diễn ra.
-          Vui lòng không đóng trang cho đến khi hoàn tất.
+        
+        <!-- Progress bar -->
+        <div class="progress mt-4" style="height: 20px;">
+          <div id="trainingProgress" class="progress-bar progress-bar-striped progress-bar-animated" 
+               role="progressbar" 
+               style="width: 0%" 
+               aria-valuenow="0" 
+               aria-valuemin="0" 
+               aria-valuemax="100">0%</div>
         </div>
-        <!-- Progress bar và metrics sẽ được thêm vào bằng JavaScript -->
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-danger" id="cancelTrainingBtn">
@@ -405,11 +410,9 @@ block extra_css %}
   </div>
 </div>
 
-<!-- Hidden fields cho form submission -->
-<input type="hidden" name="model_file" id="model_file" value="" />
-<input type="hidden" name="config_file" id="config_file" value="" />
-<input type="hidden" name="accuracy" id="accuracy" value="0" />
-<input type="hidden" id="trained" name="trained" value="false" />
+<!-- Hidden fields -->
+<input type="hidden" name="model_id" id="model_id" value="">
+<input type="hidden" name="trained" id="trained" value="false">
 <input
   type="hidden"
   id="training_success"

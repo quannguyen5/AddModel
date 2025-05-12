@@ -1,0 +1,27 @@
+{
+  "status": "running",
+  "model_id": "20",
+  "model_name": "M\u00f4 h\u00ecnh 2p2",
+  "current_epoch": 0,
+  "total_epochs": 2,
+  "start_time": "2025-05-12 15:03:31",
+  "template_ids": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7"
+  ],
+  "dataset_info": {
+    "total_images": 7,
+    "train_images": 7,
+    "val_images": 2,
+    "class_counts": {
+      "0": 12
+    }
+  },
+  "pid": 16560,
+  "command": "yolo task=detect mode=train model=yolov8n.pt data=models\\20\\dataset\\dataset.yaml epochs=2 project=models/20 name=train exist_ok=True"
+}
