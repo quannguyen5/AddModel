@@ -31,19 +31,6 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.secret_key = os.getenv(
     "SECRET_KEY", "8f42a73054b92c79c07935be5a17aa0ca383b783e4e321f3")
 
-# Thiết lập logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger("app")
-
-# Import các DAOs
-
 # Khởi tạo các DAO
 model_dao = ModelDAO()
 train_info_dao = TrainInfoDAO()
@@ -91,7 +78,6 @@ def model_management():
 
 @app.route('/add-model', methods=['GET', 'POST'])
 def route_add_model():
-    """Trang thêm mô hình mới."""
     if request.method == 'GET':
         templates = fraud_template_dao.get_all()
         templates_dict = []
@@ -99,10 +85,16 @@ def route_add_model():
             template_dict = template.to_dict()
             templates_dict.append(template_dict)
         model_types = ModelType.get_all_values()
-        return render_template('add_model.html', sample_images=templates_dict, model_types=model_types, active_page='model_management')
+        models = model_dao.get_all()
+        model_id = 1000
+        if models and len(models) > 0:
+            model_id = max([m.idModel for m in models]) + 1
+        return render_template('add_model.html', sample_images=templates_dict, model_types=model_types, model_id=model_id, active_page='model_management')
     else:
         # Xử lý POST request để lưu mô hình đã train vào database
-        model_id = request.form.get('model_id')
+        data = request.json
+        model_id = data.get('model_id')
+        print(model_id)
         if not model_id:
             flash('Không tìm thấy thông tin ID mô hình', 'danger')
             return redirect(url_for('model_management'))
@@ -112,13 +104,13 @@ def route_add_model():
         if training_status.get('status') != 'completed':
             flash(
                 f'Huấn luyện chưa hoàn thành (trạng thái: {training_status.get("status")})', 'warning')
-            return redirect(url_for('add_model'))
+            return redirect(url_for('route_add_model'))
 
         # Lấy thông tin từ form
-        model_name = request.form.get('model_name', '')
-        model_type = request.form.get('model_type', '')
-        version = request.form.get('version', '')
-        description = request.form.get('description', '')
+        model_name = data.get('model_name', '')
+        model_type = data.get('model_type', '')
+        version = data.get('version', '')
+        description = data.get('description', '')
 
         # Kiểm tra mô hình đã tồn tại
         existing_models = model_dao.get_all()
@@ -126,7 +118,7 @@ def route_add_model():
             if existing_model.modelName == model_name and existing_model.version == version:
                 flash(
                     f'Mô hình {model_name} phiên bản {version} đã tồn tại.', 'danger')
-                return redirect(url_for('add_model'))
+                return redirect(url_for('route_add_model'))
 
         # Tạo TrainInfo object
         train_info = TrainInfo(
@@ -171,22 +163,15 @@ def route_add_model():
 
 
 def run_training_in_thread(model_id, model_name, model_type, version, template_ids, epochs, batch_size, image_size, learning_rate):
-    """
-    Chạy huấn luyện trong thread riêng biệt để không block server
-    """
     try:
-        logger.info(
-            f"Bắt đầu huấn luyện model {model_name} (ID: {model_id}) trong thread riêng")
         result = train_yolo_model(model_id, model_name, model_type, version,
                                   epochs, batch_size, image_size, learning_rate, template_ids)
         if result['success']:
-            logger.info(f"Hoàn thành huấn luyện model {model_id} thành công")
+            print("train success")
         else:
-            logger.error(
-                f"Huấn luyện model {model_id} thất bại: {result['message']}")
+            print("train failed", result['message'])
     except Exception as e:
-        logger.error(f"Lỗi khi huấn luyện model {model_id} trong thread: {e}")
-        logger.error(traceback.format_exc())
+        print(e)
 
 
 @app.route('/api/train-model', methods=['POST'])
@@ -195,9 +180,8 @@ def api_train_model():
     try:
         data = request.json
         model_name = data.get('model_name')
-        model_type = data.get(
-            'model_type', 'FraudDetection')  # Giá trị mặc định
-        version = data.get('version', 'v1.0.0')  # Add default version
+        model_type = data.get('model_type', 'FraudDetection')
+        version = data.get('version', 'v1.0.0')
         template_ids = data.get('template_ids', [])
         epochs = int(data.get('epochs', 100))
         batch_size = int(data.get('batch_size', 16))
@@ -205,18 +189,14 @@ def api_train_model():
         learning_rate = float(data.get('learning_rate', 0.001))
 
         if not model_name or not template_ids:
-            logger.warning("Thiếu thông tin cần thiết cho huấn luyện")
             return jsonify({'success': False, 'message': 'Thiếu thông tin cần thiết'})
 
         # Lấy model ID mới
         models = model_dao.get_all()
-        model_id = 1000  # Default
+        model_id = 1000
         if models and len(models) > 0:
             model_id = max([m.idModel for m in models]) + 1
 
-        logger.info(f"Tạo model mới với ID: {model_id}, tên: {model_name}")
-
-        # Bắt đầu huấn luyện trong thread riêng để không block server
         training_thread = threading.Thread(
             target=run_training_in_thread,
             args=(model_id, model_name, model_type, version, template_ids, epochs,
@@ -225,15 +205,13 @@ def api_train_model():
         training_thread.daemon = True
         training_thread.start()
 
-        logger.info(f"Đã bắt đầu thread huấn luyện cho model ID: {model_id}")
-
         return jsonify({
             'success': True,
             'model_id': model_id,
             'message': 'Đã bắt đầu huấn luyện'
         })
     except Exception as e:
-        logger.error(f"Lỗi API train model: {e}")
+        print(e)
         return jsonify({
             'success': False,
             'message': f'Lỗi: {str(e)}'
@@ -246,172 +224,74 @@ def api_training_status(model_id):
     try:
         status = get_training_status(model_id)
         print(status)
-        logger.debug(
-            f"Lấy trạng thái model {model_id}: {status.get('status')}")
         return jsonify(status)
     except Exception as e:
-        logger.error(f"Lỗi khi lấy trạng thái huấn luyện: {e}")
+        print(e)
         return jsonify({
             'status': 'error',
             'error': str(e)
         })
 
 
-def cancel_training(model_id):
-    """
-    Hủy quá trình huấn luyện đang chạy
-
-    Args:
-        model_id: ID của mô hình cần hủy
-
-    Returns:
-        bool: True nếu hủy thành công, False nếu không
-    """
-    model_id = str(model_id)
-    logger.info(f"Attempting to cancel training for model ID: {model_id}")
-
-    # Đọc thông tin trạng thái
-    status_file = os.path.join('models', model_id, 'status.json')
-    if not os.path.exists(status_file):
-        logger.error(f"Status file not found: {status_file}")
-        return False
-
+@app.route('/api/cancel-training/<model_id>', methods=['POST'])
+def api_cancel_training(model_id):
+    """API hủy quá trình huấn luyện."""
     try:
-        # Cập nhật trạng thái
+        model_id = str(model_id)
+        print(f"Nhận yêu cầu hủy huấn luyện cho model ID: {model_id}")
+        status_file = os.path.join('model_train_logs', model_id, 'status.json')
+        if not os.path.exists(status_file):
+            print(f"Không tìm thấy file status cho model {model_id}")
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy thông tin huấn luyện'
+            })
+
+        # Cập nhật trạng thái trong file
         with open(status_file, 'r', encoding='utf-8') as f:
             status = json.load(f)
 
-        # Skip if already cancelled or completed
+        # Nếu đã hoàn thành/hủy/lỗi rồi thì không cần làm gì thêm
         if status.get('status') in ['cancelled', 'completed', 'failed']:
-            logger.info(
-                f"Training already in state {status.get('status')}, no need to cancel")
-            return True
+            print(
+                f"Model {model_id} đã ở trạng thái {status.get('status')}, không cần hủy")
+            return jsonify({
+                'success': True,
+                'message': f"Model đã ở trạng thái {status.get('status')}"
+            })
 
+        # Đổi trạng thái thành cancelled
         status['status'] = 'cancelled'
         status['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         with open(status_file, 'w', encoding='utf-8') as f:
             json.dump(status, f, indent=2)
 
-        # Force kill all related processes
-        try:
-            import psutil
-            import signal
+        # Sử dụng hàm có sẵn từ train_model.py
+        from train_model import cancel_training
+        cancel_success = cancel_training(model_id)
 
-            search_terms = [
-                f"model_id={model_id}",  # Command line argument
-                f"models\\{model_id}",    # Directory name (Windows)
-                f"models/{model_id}"      # Directory name (Linux/Mac)
-            ]
-
-            killed_any = False
-
-            # Kill any Python process that might be training this model
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    if 'python' in proc.info['name'].lower():
-                        cmdline = ' '.join([str(x)
-                                           for x in proc.info['cmdline']])
-
-                        # Check if this process is related to our model training
-                        if any(term in cmdline for term in search_terms):
-                            logger.info(
-                                f"Found process to kill: PID {proc.pid}, cmdline: {cmdline[:100]}...")
-
-                            # Kill this process and its children
-                            try:
-                                parent = psutil.Process(proc.pid)
-
-                                # Kill children first
-                                for child in parent.children(recursive=True):
-                                    logger.info(
-                                        f"Killing child process: {child.pid}")
-                                    child.kill()
-
-                                # Then kill parent
-                                logger.info(
-                                    f"Killing parent process: {parent.pid}")
-                                parent.kill()
-
-                                killed_any = True
-
-                            except psutil.NoSuchProcess:
-                                logger.warning(
-                                    f"Process {proc.pid} no longer exists")
-                            except Exception as e:
-                                logger.error(
-                                    f"Error killing process {proc.pid}: {e}")
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    continue
-
-            # Also kill any YOLO processes that might be running this model
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    cmdline = ' '.join([str(x) for x in proc.info['cmdline']])
-                    if 'yolo' in cmdline.lower() and 'train' in cmdline.lower():
-                        if os.path.join('models', model_id) in cmdline:
-                            logger.info(
-                                f"Found YOLO process to kill: PID {proc.pid}")
-                            psutil.Process(proc.pid).kill()
-                            killed_any = True
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    continue
-
-            # If we didn't find any specific processes, kill all python processes with 'yolo' and 'train'
-            # This is a last resort and might kill unrelated processes
-            if not killed_any:
-                logger.warning(
-                    "No specific processes found, attempting to kill all YOLO training processes")
-                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                    try:
-                        cmdline = ' '.join([str(x)
-                                           for x in proc.info['cmdline']])
-                        if 'python' in proc.info['name'].lower() and 'yolo' in cmdline.lower() and 'train' in cmdline.lower():
-                            logger.info(
-                                f"Killing YOLO training process: PID {proc.pid}")
-                            psutil.Process(proc.pid).kill()
-                            killed_any = True
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        continue
-
-            return killed_any
-
-        except ImportError:
-            # Fallback to os-specific commands
-            import platform
-            import subprocess
-
-            if platform.system() == "Windows":
-                # Kết thúc process trên Windows
-                try:
-                    logger.info("Trying to kill processes using taskkill")
-                    subprocess.run(
-                        f'taskkill /F /FI "COMMANDLINE eq *models\\{model_id}*"', shell=True)
-                    subprocess.run(
-                        f'taskkill /F /FI "COMMANDLINE eq *model_id={model_id}*"', shell=True)
-                    subprocess.run(
-                        f'taskkill /F /FI "COMMANDLINE eq *yolo*train*"', shell=True)
-                    return True
-                except Exception as e:
-                    logger.error(f"Error killing processes with taskkill: {e}")
-                    return False
-            else:
-                # Kết thúc process trên Linux/Mac
-                try:
-                    logger.info("Trying to kill processes using pkill")
-                    subprocess.run(f"pkill -f 'models/{model_id}'", shell=True)
-                    subprocess.run(
-                        f"pkill -f 'model_id={model_id}'", shell=True)
-                    subprocess.run(f"pkill -f 'yolo.*train'", shell=True)
-                    return True
-                except Exception as e:
-                    logger.error(f"Error killing processes with pkill: {e}")
-                    return False
+        if cancel_success:
+            print(
+                f"Đã hủy thành công quá trình huấn luyện model {model_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Đã hủy quá trình huấn luyện'
+            })
+        else:
+            print(
+                f"Không tìm thấy process huấn luyện để hủy cho model {model_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Đã cập nhật trạng thái hủy, nhưng không tìm thấy process để kết thúc'
+            })
 
     except Exception as e:
-        logger.error(f"Error cancelling training: {e}")
-        logger.error(traceback.format_exc())
-        return False
+        print(f"Lỗi khi hủy huấn luyện: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        })
 
 
 @app.after_request
@@ -423,11 +303,6 @@ def add_header(response):
     return response
 
 
-# Tắt debug nếu ở môi trường production
-if not Config.DEBUG:
-    # Tắt watchdog/reloading để tránh các vấn đề với thread
-    # Khi tắt debug, watchdog sẽ không theo dõi các file thư viện
-    app.config['USE_RELOADER'] = False
 # Đảm bảo stdout và stderr có thể xử lý Unicode
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
