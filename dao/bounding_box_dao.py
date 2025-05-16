@@ -100,9 +100,7 @@ class BoundingBoxDAO:
     def create(self, box):
         try:
             query = """
-                INSERT INTO BoundingBox (xCenter, yCenter, width, height,
-                                    xPixel, yPixel, widthPixel, heightPixel,
-                                    fraudLabelId, fraudTemplateId)
+                INSERT INTO BoundingBox (xCenter, yCenter, width, height, xPixel, yPixel, widthPixel, heightPixel, fraudLabelId, fraudTemplateId) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
 

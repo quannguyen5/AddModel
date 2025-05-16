@@ -1,0 +1,43 @@
+{
+  "status": "completed",
+  "model_id": "23",
+  "model_name": "Mohinh27",
+  "model_type": "Human Detection",
+  "version": "v1.0.27",
+  "current_epoch": 3,
+  "total_epochs": 3,
+  "start_time": "2025-05-15 15:41:13",
+  "template_ids": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7"
+  ],
+  "configuration": {
+    "epochs": 3,
+    "batch_size": 16,
+    "image_size": 640,
+    "learning_rate": 0.001
+  },
+  "dataset_info": {
+    "total_images": 7,
+    "train_images": 5,
+    "val_images": 2,
+    "class_counts": {
+      "0": 12
+    }
+  },
+  "model_path": "D:\\Ky2nam4\\Phantichthietkekientruchethong\\AddModel\\model_train_logs\\23\\weights\\best.pt",
+  "end_time": "2025-05-15 15:41:46",
+  "final_metrics": {
+    "map50": 0.6208016076062015,
+    "map50_95": 0.4966412860849612,
+    "precision": 0.6708016076062016,
+    "recall": 0.5908016076062015,
+    "accuracy": 0.6508016076062015,
+    "f1_score": 0.6282651524343896
+  }
+}

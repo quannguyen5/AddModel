@@ -1,0 +1,10 @@
+
+# YOLOv8 dataset config
+path: D:\Ky2nam4\Phantichthietkekientruchethong\AddModel\model_train_logs\23\dataset
+train: train/images
+val: val/images
+
+# Classes
+names:
+  0: Human
+  1: Object

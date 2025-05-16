@@ -7,10 +7,8 @@ from datetime import datetime
 from pathlib import Path
 import random
 
-# Thư mục lưu trữ mô hình
+# Thu muc luu tru mo hinh
 MODEL_DIR = 'model_train_logs'
-
-# Đảm bảo thư mục tồn tại
 
 
 def ensure_dir(directory):
@@ -20,9 +18,9 @@ def ensure_dir(directory):
 
 def train_yolo_model(model_id, model_name, model_type, version, epochs=100, batch_size=16,
                      image_size=640, learning_rate=0.001, template_ids=None):
-    """Bắt đầu huấn luyện mô hình YOLOv8"""
+    """Bat dau huan luyen"""
     model_id = str(model_id)
-    print(f"Bắt đầu huấn luyện model {model_name} (ID: {model_id})")
+    print(f"Bat dau huan luyen model {model_name} (ID: {model_id})")
 
     # Tạo thư mục cho model
     model_dir = os.path.join(MODEL_DIR, model_id)
@@ -132,15 +130,19 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100, batc
                     for box in template.boundingBox:
                         # Lấy class id từ label
                         label = fraud_label_dao.get_by_id(box.fraudLabelId)
-                        class_id = 0  # Mặc định là human
+                        class_id = 0
 
                         if label and label.typeLabel:
                             type_label = label.typeLabel
                             if isinstance(type_label, str):
-                                if type_label == "HumanDetect":
+                                if type_label == "huitou":
                                     class_id = 0
-                                elif type_label == "literal":
-                                    class_id = 1
+                                elif type_label == "normal":
+                                    class_id = 2
+                                elif type_label == "phone":
+                                    class_id = 3
+                                else:
+                                    class_id = 4
 
                         # Cập nhật số lượng class
                         class_counts[class_id] = class_counts.get(
@@ -200,7 +202,7 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100, batc
             shutil.copy2(train_label, val_label)
 
         # Tạo file dataset.yaml
-        class_names = ["Human", "Object"]
+        class_names = ["huitou", "normal", "phone", "zuobi"]
         yaml_content = f"""
 # YOLOv8 dataset config
 path: {os.path.abspath(dataset_dir)}
@@ -211,8 +213,9 @@ val: val/images
 names:
   0: {class_names[0]}
   1: {class_names[1]}
+  2: {class_names[2]}
+  3: {class_names[3]}
 """
-
         yaml_path = os.path.join(dataset_dir, 'dataset.yaml')
         with open(yaml_path, 'w') as f:
             f.write(yaml_content)
@@ -262,26 +265,8 @@ names:
                     except Exception as e:
                         print(f"Error in on_train_epoch_end: {e}")
 
-                # Định nghĩa callback để kiểm tra hủy trong quá trình huấn luyện
-                def on_batch_end(trainer):
-                    try:
-                        # Đọc trạng thái hiện tại
-                        with open(status_file, 'r', encoding='utf-8') as f:
-                            current_status = json.load(f)
-
-                        # Kiểm tra nếu đã bị hủy
-                        if current_status.get('status') == 'cancelled':
-                            print(
-                                f"Phát hiện hủy huấn luyện, dừng model {model_id}")
-                            trainer.stop = True
-                            return True
-                    except:
-                        pass
-                    return False
-
                 # Đăng ký callbacks
                 model.add_callback("on_train_epoch_end", on_train_epoch_end)
-                model.add_callback("on_batch_end", on_batch_end)
 
                 # Bắt đầu huấn luyện
                 print(f"Bắt đầu huấn luyện YOLOv8 với dataset: {yaml_path}")
@@ -309,36 +294,68 @@ names:
                 best_model_path = find_model_file(model_id)
 
                 if best_model_path:
-                    # Tạo các metrics khi huấn luyện hoàn thành
-                    # Các metrics sẽ có giá trị hợp lý dựa trên kích thước dataset và epochs
-                    total_samples = final_status["dataset_info"]["total_images"]
-                    # Càng nhiều mẫu và epochs, kết quả càng tốt
-                    quality_factor = min(
-                        0.95, 0.5 + 0.05 * (total_samples / 10) + 0.02 * (epochs / 10))
+                    # Xác định đường dẫn cụ thể tới results.csv
+                    results_file = None
 
-                    # Thêm chút ngẫu nhiên để trông tự nhiên hơn
-                    random_factor = random.uniform(-0.1, 0.1)
-                    base_metric = quality_factor + random_factor
+                    # Tìm file results.csv trong các vị trí có thể
+                    model_dir_path = os.path.join(MODEL_DIR, model_id)
+                    results_file = os.path.join(model_dir_path, "results.csv")
 
-                    # Đảm bảo mAP50 không vượt quá 1.0 và không nhỏ hơn 0.5
-                    map50 = max(0.5, min(0.95, base_metric))
-                    # mAP50-95 luôn thấp hơn mAP50
-                    map50_95 = map50 * 0.8
-                    precision = max(0.5, min(0.98, base_metric + 0.05))
-                    recall = max(0.5, min(0.98, base_metric - 0.03))
-                    accuracy = max(
-                        0.5, min(0.98, (precision + recall) / 2 + 0.02))
-                    f1_score = 2 * (precision * recall) / (precision +
-                                                           recall) if (precision + recall) > 0 else 0
+                    # Khởi tạo giá trị metrics mặc định
+                    map50 = 0.0
+                    map50_95 = 0.0
+                    precision = 0.0
+                    recall = 0.0
+                    accuracy = 0.0
+                    f1_score = 0.0
+                    is_estimated = True  # Mặc định là metrics được ước tính
+
+                    # Đọc metrics từ file results.csv
+                    if os.path.exists(results_file):
+                        try:
+                            print(f"Đọc metrics từ file {results_file}")
+                            import csv
+
+                            with open(results_file, 'r') as f:
+                                reader = csv.DictReader(f)
+                                rows = list(reader)
+
+                                if rows:
+                                    # Lấy hàng cuối cùng (kết quả của epoch cuối)
+                                    last_row = rows[-1]
+
+                                    # Đọc trực tiếp từ các cột metrics đã biết
+                                    precision = float(
+                                        last_row['metrics/precision(B)'])
+                                    recall = float(
+                                        last_row['metrics/recall(B)'])
+                                    map50 = float(last_row['metrics/mAP50(B)'])
+                                    map50_95 = float(
+                                        last_row['metrics/mAP50-95(B)'])
+
+                                    # Tính F1 score và accuracy
+                                    f1_score = 2 * \
+                                        (precision * recall) / (precision +
+                                                                recall) if (precision + recall) > 0 else 0.0
+                                    accuracy = (precision + recall + map50) / 3
+
+                                    is_estimated = False
+                                    print(
+                                        f"Đã đọc metrics thật - mAP50: {map50:.4f}, mAP50-95: {map50_95:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
+                        except Exception as e:
+                            print(f"Lỗi khi đọc file results.csv: {str(e)}")
+                            traceback.print_exc()
 
                     # Lưu các metrics vào trạng thái cuối cùng
                     final_status["final_metrics"] = {
-                        "map50": map50,
-                        "map50_95": map50_95,
-                        "precision": precision,
-                        "recall": recall,
-                        "accuracy": accuracy,
-                        "f1_score": f1_score
+                        # Làm tròn để tránh số quá dài
+                        "map50": round(map50, 6),
+                        "map50_95": round(map50_95, 6),
+                        "precision": round(precision, 6),
+                        "recall": round(recall, 6),
+                        "accuracy": round(accuracy, 6),
+                        "f1_score": round(f1_score, 6),
+                        "is_estimated": is_estimated  # Đánh dấu xem metrics có được ước tính không
                     }
 
                     # Cập nhật trạng thái hoàn thành
@@ -350,6 +367,7 @@ names:
                     final_status["current_epoch"] = epochs
 
                     print(f"Huấn luyện model {model_id} hoàn tất thành công")
+
                 else:
                     # Cập nhật trạng thái thất bại
                     final_status["status"] = "failed"
@@ -397,9 +415,7 @@ names:
         }
 
     except Exception as e:
-        tb = traceback.format_exc()
         print(f"Lỗi khi chuẩn bị huấn luyện: {e}")
-        print(tb)
 
         # Cập nhật trạng thái thất bại
         status["status"] = "failed"
@@ -542,28 +558,3 @@ def cancel_training(model_id):
         print(f"Lỗi khi hủy huấn luyện: {e}")
         traceback.print_exc()
         return False
-
-
-if __name__ == "__main__":
-    import sys
-    import json
-
-    if len(sys.argv) < 4:
-        print("Sử dụng: python train_model.py <model_id> <model_name> <model_type> <version> <epochs> <batch_size> <image_size> <learning_rate> <template_ids>")
-        sys.exit(1)
-
-    model_id = sys.argv[1]
-    model_name = sys.argv[2]
-    model_type = sys.argv[3]
-    version = sys.argv[4]
-    epochs = int(sys.argv[5]) if len(sys.argv) > 5 else 100
-    batch_size = int(sys.argv[6]) if len(sys.argv) > 6 else 16
-    image_size = int(sys.argv[7]) if len(sys.argv) > 7 else 640
-    learning_rate = float(sys.argv[8]) if len(sys.argv) > 8 else 0.001
-    template_ids = [int(tid) for tid in sys.argv[9].split(
-        ',')] if len(sys.argv) > 9 else []
-
-    result = train_yolo_model(model_id, model_name, model_type, version,
-                              epochs, batch_size, image_size, learning_rate, template_ids)
-
-    print(json.dumps(result, indent=2))

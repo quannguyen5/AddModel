@@ -113,3 +113,37 @@ content %}
   </div>
 </div>
 {% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Kiểm tra query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const success = urlParams.get('success');
+    const modelName = urlParams.get('model');
+    if (success === 'true' && modelName) {
+        // Tạo thông báo thành công
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show';
+        alertDiv.role = 'alert';
+        alertDiv.innerHTML = `
+            Mô hình ${modelName} đã được lưu thành công!
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        // Thêm vào trang
+        const container = document.querySelector('.header-container');
+        if (container) {
+            container.insertBefore(alertDiv, container.firstChild);
+        } else {
+            document.body.insertBefore(alertDiv, document.body.firstChild);
+        }
+        // Xóa query parameters khỏi URL (không reload trang)
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Tự động ẩn sau 5 giây
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 5000);
+    }
+});
+</script>
+{% endblock %}

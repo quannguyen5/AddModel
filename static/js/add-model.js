@@ -81,25 +81,30 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   }
-  console.log("saveButton");
   if (saveModelBtn) {
-    console.log("add save button");
     saveModelBtn.addEventListener("click", function () {
-      const modelName = modelNameInput ? modelNameInput.value : "";
+      // Disable button
+      saveModelBtn.disabled = true;
+      saveModelBtn.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Đang lưu...';
+
+      // Lấy các giá trị cần thiết
+      const modelName = modelNameInput ? modelNameInput.value.trim() : "";
       const modelType = modelTypeSelect ? modelTypeSelect.value : "";
-      const version = versionInput ? versionInput.value : "";
-      const epochs = document.getElementById("epochs")
-        ? parseInt(document.getElementById("epochs").value)
-        : 100;
-      const batchSize = document.getElementById("batch_size")
-        ? parseInt(document.getElementById("batch_size").value)
-        : 16;
-      const imageSize = document.getElementById("image_size")
-        ? parseInt(document.getElementById("image_size").value)
-        : 640;
-      const learningRate = document.getElementById("learning_rate")
-        ? parseFloat(document.getElementById("learning_rate").value)
-        : 0.001;
+      const version = versionInput ? versionInput.value.trim() : "";
+      const description = document.getElementById("description")
+        ? document.getElementById("description").value.trim()
+        : "";
+
+      // Validation
+      if (!modelName || !modelType || !version) {
+        alert(
+          "Vui lòng điền đầy đủ thông tin bắt buộc (tên mô hình, loại mô hình, version)"
+        );
+        saveModelBtn.disabled = false;
+        saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+        return;
+      }
 
       // Lấy danh sách template đã chọn
       const selectedTemplates = [];
@@ -108,6 +113,8 @@ document.addEventListener("DOMContentLoaded", function () {
           selectedTemplates.push(checkbox.dataset.id);
         }
       });
+
+      // Sử dụng fetch API với mode redirect
       fetch("/add-model", {
         method: "POST",
         headers: {
@@ -118,13 +125,41 @@ document.addEventListener("DOMContentLoaded", function () {
           model_name: modelName,
           model_type: modelType,
           version: version,
+          description: description,
           template_ids: selectedTemplates,
-          epochs: epochs,
-          batch_size: batchSize,
-          image_size: imageSize,
-          learning_rate: learningRate,
+          epochs: document.getElementById("epochs")
+            ? parseInt(document.getElementById("epochs").value)
+            : 100,
+          batch_size: document.getElementById("batch_size")
+            ? parseInt(document.getElementById("batch_size").value)
+            : 16,
+          image_size: document.getElementById("image_size")
+            ? parseInt(document.getElementById("image_size").value)
+            : 640,
+          learning_rate: document.getElementById("learning_rate")
+            ? parseFloat(document.getElementById("learning_rate").value)
+            : 0.001,
         }),
-      });
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            // Chuyển hướng với tham số thông báo
+            window.location.href = `/model-management?success=true&model=${encodeURIComponent(
+              modelName
+            )}`;
+          } else {
+            alert(data.message || "Có lỗi xảy ra khi lưu mô hình");
+            saveModelBtn.disabled = false;
+            saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+          }
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+          alert("Đã xảy ra lỗi khi lưu mô hình. Vui lòng thử lại.");
+          saveModelBtn.disabled = false;
+          saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+        });
     });
   }
 

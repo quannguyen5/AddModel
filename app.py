@@ -23,7 +23,6 @@ from dotenv import load_dotenv
 # Import train_model module
 from train_model import train_yolo_model, get_training_status, cancel_training, find_model_file
 
-# Load environment variables
 load_dotenv()
 
 # Khởi tạo Flask app
@@ -41,7 +40,7 @@ bounding_box_dao = BoundingBoxDAO()
 training_lost_dao = TrainingLostDAO()
 
 # Đảm bảo thư mục cần thiết tồn tại
-os.makedirs("models", exist_ok=True)
+os.makedirs("model_train_logs", exist_ok=True)
 
 
 @app.template_filter('fix_image_path')
@@ -91,75 +90,86 @@ def route_add_model():
             model_id = max([m.idModel for m in models]) + 1
         return render_template('add_model.html', sample_images=templates_dict, model_types=model_types, model_id=model_id, active_page='model_management')
     else:
-        # Xử lý POST request để lưu mô hình đã train vào database
-        data = request.json
-        model_id = data.get('model_id')
-        print(model_id)
-        if not model_id:
-            flash('Không tìm thấy thông tin ID mô hình', 'danger')
-            return redirect(url_for('model_management'))
+        try:
+            data = request.json
 
-        # Lấy trạng thái huấn luyện
-        training_status = get_training_status(model_id)
-        if training_status.get('status') != 'completed':
-            flash(
-                f'Huấn luyện chưa hoàn thành (trạng thái: {training_status.get("status")})', 'warning')
-            return redirect(url_for('route_add_model'))
+            model_id = data.get('model_id')
 
-        # Lấy thông tin từ form
-        model_name = data.get('model_name', '')
-        model_type = data.get('model_type', '')
-        version = data.get('version', '')
-        description = data.get('description', '')
+            if not model_id:
+                return jsonify({'success': False, 'message': 'Không tìm thấy thông tin ID mô hình'})
 
-        # Kiểm tra mô hình đã tồn tại
-        existing_models = model_dao.get_all()
-        for existing_model in existing_models:
-            if existing_model.modelName == model_name and existing_model.version == version:
-                flash(
-                    f'Mô hình {model_name} phiên bản {version} đã tồn tại.', 'danger')
-                return redirect(url_for('route_add_model'))
+            training_status = get_training_status(model_id)
+            if training_status.get('status') != 'completed':
+                return jsonify({'success': False, 'message': f'Huấn luyện chưa hoàn thành (trạng thái: {training_status.get("status")})'})
 
-        # Tạo TrainInfo object
-        train_info = TrainInfo(
-            epoch=int(training_status.get('total_epochs', 100)),
-            learningRate=float(0.01),  # Default value
-            batchSize=int(16),  # Default value
-            accuracy=float(0.85),  # Default value
-            timeTrain=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        )
+            model_name = data.get('model_name', '')
+            model_type = data.get('model_type', '')
+            version = data.get('version', '')
+            description = data.get('description', '')
 
-        # Lưu TrainInfo
-        train_info_id = train_info_dao.create(train_info)
-        train_info.idInfo = train_info_id
+            print(
+                f"Saving model: {model_name}, type: {model_type}, version: {version}")
 
-        # Tạo Model và lưu vào database
-        model = Model(
-            modelName=model_name,
-            modelType=model_type,
-            version=version,
-            description=description or f"Model huấn luyện YOLOv8 ngày {datetime.now().strftime('%Y-%m-%d')}",
-            lastUpdate=datetime.now()
-        )
+            # Kiểm tra mô hình đã tồn tại
+            existing_models = model_dao.get_all()
+            for existing_model in existing_models:
+                if existing_model.modelName == model_name and existing_model.version == version:
+                    return jsonify({'success': False, 'message': f'Mô hình {model_name} phiên bản {version} đã tồn tại.'})
 
-        model.trainInfo = train_info
-        model_id_db = model_dao.create(model)
+            # Tạo TrainInfo object
+            train_info = TrainInfo(
+                epoch=int(
+                    data.get('epochs', training_status.get('total_epochs', 100))),
+                learningRate=float(data.get('learning_rate', 0.001)),
+                batchSize=int(data.get('batch_size', 16)),
+                accuracy=float(training_status.get(
+                    'final_metrics', {}).get('accuracy', 0.85)),
+                timeTrain=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            )
 
-        # Lưu dữ liệu huấn luyện (template ID)
-        template_ids = training_status.get("template_ids", [])
-        for template_id in template_ids:
-            template = fraud_template_dao.get_by_id(int(template_id))
-            if template:
-                training_data = TrainingData(
-                    modelId=model_id_db,
-                    fraudTemplateId=template.idTemplate,
-                    description=f"Training data for {model_name}",
-                    timeUpdate=datetime.now()
-                )
-                training_data_dao.create(training_data)
+            # Lưu TrainInfo
+            train_info_id = train_info_dao.create(train_info)
+            train_info.idInfo = train_info_id
 
-        flash(f'Mô hình {model_name} đã được lưu thành công!', 'success')
-        return redirect(url_for('model_management'))
+            # Tạo Model và lưu vào database
+            model = Model(
+                modelName=model_name,
+                modelType=model_type,
+                version=version,
+                description=description or f"Model huấn luyện YOLOv8 ngày {datetime.now().strftime('%Y-%m-%d')}",
+                lastUpdate=datetime.now()
+            )
+
+            model.trainInfo = train_info
+            model_id_db = model_dao.create(model)
+
+            print(f"Model created with database ID: {model_id_db}")
+
+            # Lưu dữ liệu huấn luyện (template ID)
+            template_ids = data.get('template_ids', [])
+            processed_templates = 0
+
+            for template_id in template_ids:
+                template = fraud_template_dao.get_by_id(int(template_id))
+                if template:
+                    training_data = TrainingData(
+                        modelId=model_id_db,
+                        fraudTemplateId=template.idTemplate,
+                        description=f"Training data for {model_name}",
+                        timeUpdate=datetime.now()
+                    )
+                    training_data_dao.create(training_data)
+                    processed_templates += 1
+
+            print(f"Processed {processed_templates} templates for model")
+
+            # Trả về kết quả thành công dưới dạng JSON
+            return jsonify({'success': True,
+                            'message': f'Mô hình {model_name} đã được lưu thành công!'})
+
+        except Exception as e:
+            print(f"Error saving model: {str(e)}")
+            return jsonify({'success': False, 'message': f'Lỗi khi lưu mô hình: {str(e)}'})
 
 
 def run_training_in_thread(model_id, model_name, model_type, version, template_ids, epochs, batch_size, image_size, learning_rate):
@@ -176,7 +186,6 @@ def run_training_in_thread(model_id, model_name, model_type, version, template_i
 
 @app.route('/api/train-model', methods=['POST'])
 def api_train_model():
-    """API bắt đầu huấn luyện mô hình."""
     try:
         data = request.json
         model_name = data.get('model_name')
@@ -235,7 +244,6 @@ def api_training_status(model_id):
 
 @app.route('/api/cancel-training/<model_id>', methods=['POST'])
 def api_cancel_training(model_id):
-    """API hủy quá trình huấn luyện."""
     try:
         model_id = str(model_id)
         print(f"Nhận yêu cầu hủy huấn luyện cho model ID: {model_id}")
