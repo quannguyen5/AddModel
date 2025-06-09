@@ -6,7 +6,16 @@ document.addEventListener("DOMContentLoaded", function () {
   const modelTypeSelect = document.getElementById("model_type");
   const versionInput = document.getElementById("version");
   const trainingModal = document.getElementById("trainingModal");
+  const closeBtn = document.getElementById("closeDialog");
 
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function () {
+      const modalInstance = bootstrap.Modal.getInstance(trainingModal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+    });
+  }
   // Progress monitoring
   let trainingTimer;
   let modelId;
@@ -150,7 +159,7 @@ document.addEventListener("DOMContentLoaded", function () {
             )}`;
           } else {
             alert(data.message || "Có lỗi xảy ra khi lưu mô hình");
-            saveModelBtn.disabled = false;
+            saveModelBtn.disabled = true;
             saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
           }
         })
@@ -167,61 +176,78 @@ document.addEventListener("DOMContentLoaded", function () {
   const finishTrainingBtn = document.getElementById("finishTrainingBtn");
   if (finishTrainingBtn) {
     finishTrainingBtn.addEventListener("click", function () {
-      // Hide modal using Bootstrap 5 modal instance
-      const modalInstance = bootstrap.Modal.getInstance(trainingModal);
-      if (modalInstance) {
-        modalInstance.hide();
+      // Lấy các giá trị cần thiết
+      const modelName = modelNameInput ? modelNameInput.value.trim() : "";
+      const modelType = modelTypeSelect ? modelTypeSelect.value : "";
+      const version = versionInput ? versionInput.value.trim() : "";
+      const description = document.getElementById("description")
+        ? document.getElementById("description").value.trim()
+        : "";
+
+      // Validation
+      if (!modelName || !modelType || !version) {
+        alert(
+          "Vui lòng điền đầy đủ thông tin bắt buộc (tên mô hình, loại mô hình, version)"
+        );
+        saveModelBtn.disabled = false;
+        saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+        return;
       }
 
-      // Hiển thị nút Save và form lưu model
-      if (saveModelBtn) {
-        saveModelBtn.classList.remove("fade");
-        saveModelBtn.classList.add("show");
-      }
-
-      // Thêm model_id vào form
-      const modelIdInput = document.getElementById("model_id");
-      if (modelIdInput) {
-        modelIdInput.value = modelId;
-      }
-
-      // Cập nhật trạng thái huấn luyện
-      const trainedInput = document.getElementById("trained");
-      const trainingSuccessInput = document.getElementById("training_success");
-      const accuracyInput = document.getElementById("accuracy"); // Thêm input accuracy
-
-      if (trainedInput) trainedInput.value = "true";
-      if (trainingSuccessInput) trainingSuccessInput.value = "true";
-
-      // Cập nhật giá trị accuracy nếu có
-      if (accuracyInput) {
-        const accuracyElem = document.getElementById("metricAccuracy");
-        const map50Elem = document.getElementById("metricMap50");
-
-        // Ưu tiên sử dụng accuracy nếu có
-        if (
-          accuracyElem &&
-          accuracyElem.textContent &&
-          accuracyElem.textContent !== "-"
-        ) {
-          const accuracy =
-            parseFloat(accuracyElem.textContent.replace("%", "")) / 100;
-          accuracyInput.value = accuracy.toString();
+      // Lấy danh sách template đã chọn
+      const selectedTemplates = [];
+      sampleCheckboxes.forEach((checkbox) => {
+        if (checkbox.checked) {
+          selectedTemplates.push(checkbox.dataset.id);
         }
-        // Nếu không có accuracy, dùng mAP50
-        else if (
-          map50Elem &&
-          map50Elem.textContent &&
-          map50Elem.textContent !== "-"
-        ) {
-          const accuracy =
-            parseFloat(map50Elem.textContent.replace("%", "")) / 100;
-          accuracyInput.value = accuracy.toString();
-        } else {
-          // Giá trị mặc định nếu không có thông số
-          accuracyInput.value = "0.75";
-        }
-      }
+      });
+
+      // Sử dụng fetch API với mode redirect
+      fetch("/add-model", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model_id: modelId,
+          model_name: modelName,
+          model_type: modelType,
+          version: version,
+          description: description,
+          template_ids: selectedTemplates,
+          epochs: document.getElementById("epochs")
+            ? parseInt(document.getElementById("epochs").value)
+            : 100,
+          batch_size: document.getElementById("batch_size")
+            ? parseInt(document.getElementById("batch_size").value)
+            : 16,
+          image_size: document.getElementById("image_size")
+            ? parseInt(document.getElementById("image_size").value)
+            : 640,
+          learning_rate: document.getElementById("learning_rate")
+            ? parseFloat(document.getElementById("learning_rate").value)
+            : 0.001,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            // Chuyển hướng với tham số thông báo
+            window.location.href = `/model-management?success=true&model=${encodeURIComponent(
+              modelName
+            )}`;
+          } else {
+            alert(data.message || "Có lỗi xảy ra khi lưu mô hình");
+            saveModelBtn.disabled = true;
+            saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+          }
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+          alert("Đã xảy ra lỗi khi lưu mô hình. Vui lòng thử lại.");
+          saveModelBtn.disabled = false;
+          saveModelBtn.innerHTML = '<i class="fas fa-save"></i> Lưu mô hình';
+        });
     });
   }
 
@@ -273,6 +299,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     if (finishTrainingBtn) {
       finishTrainingBtn.style.display = "none";
+    }
+    if (closeBtn) {
+      closeBtn.style.display = "none";
     }
 
     // Gửi request tới API để bắt đầu huấn luyện
@@ -431,6 +460,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Cập nhật trạng thái nút
     document.getElementById("cancelTrainingBtn").style.display = "none";
     document.getElementById("finishTrainingBtn").style.display = "block";
+    document.getElementById("closeDialog").style.display = "block";
 
     // Cập nhật giá trị cho form
     document.getElementById("model_path").value = data.model_path || "";

@@ -123,257 +123,249 @@ block extra_css %}
 
 <div class="card">
   <div class="card-body">
-      <!-- Thông tin mô hình mới section -->
-      <div class="form-section">
-        <div class="form-section-title">
-          <i class="fas fa-info-circle"></i> Thông tin mô hình mới
-        </div>
-        <div class="row">
-          <div class="col-md-6">
-            <div class="mb-3">
-              <label for="model_id" class="form-label required-field"
-                >Id mô hình</label
-              >
-              <p
-                class="form-control"
-                id="model_id"
-                name="model_id"
-                required
-              /p>
-              {{model_id}}
-            </div>
-            <div class="mb-3">
-              <label for="model_name" class="form-label required-field"
-                >Tên mô hình</label
-              >
-              <input
-                type="text"
-                class="form-control"
-                id="model_name"
-                name="model_name"
-                required
-              />
-            </div>
-            <div class="mb-3">
-              <label for="model_type" class="form-label required-field"
-                >Loại mô hình</label
-              >
-              <select
-                class="form-select"
-                id="model_type"
-                name="model_type"
-                required
-              >
-                <option value="">-- Chọn loại mô hình --</option>
-                {% for type in model_types %}
-                <option value="{{ type }}">{{ type }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="mb-3">
-              <label for="version" class="form-label required-field"
-                >Version</label
-              >
-              <input
-                type="text"
-                class="form-control"
-                id="version"
-                name="version"
-                placeholder="v1.0.0"
-                required
-              />
-            </div>
+    <!-- Thông tin mô hình mới section -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <i class="fas fa-info-circle"></i> Thông tin mô hình mới
+      </div>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="model_id" class="form-label required-field"
+              >Id mô hình</label
+            >
+            <p class="form-control" id="model_id" name="model_id" required /p>
+            {{model_id}}
           </div>
+          <div class="mb-3">
+            <label for="model_name" class="form-label required-field"
+              >Tên mô hình</label
+            >
+            <input
+              type="text"
+              class="form-control"
+              id="model_name"
+              name="model_name"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label for="model_type" class="form-label required-field"
+              >Loại mô hình</label
+            >
+            <select
+              class="form-select"
+              id="model_type"
+              name="model_type"
+              required
+            >
+              <option value="">-- Chọn loại mô hình --</option>
+              {% for type in model_types %}
+              <option value="{{ type }}">{{ type }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="version" class="form-label required-field"
+              >Version</label
+            >
+            <input
+              type="text"
+              class="form-control"
+              id="version"
+              name="version"
+              placeholder="v1.0.0"
+              required
+            />
+          </div>
+        </div>
 
-          <div class="col-md-6">
-            <div class="mb-3">
-              <label for="description" class="form-label">Mô tả</label>
-              <textarea
-                class="form-control"
-                id="description"
-                name="description"
-                rows="7"
-              ></textarea>
-            </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="description" class="form-label">Mô tả</label>
+            <textarea
+              class="form-control"
+              id="description"
+              name="description"
+              rows="7"
+            ></textarea>
           </div>
         </div>
       </div>
-      <!-- Thông số huấn luyện -->
-      <div class="form-section">
-        <div class="form-section-title">
-          <i class="fas fa-cog"></i> Thông số huấn luyện
+    </div>
+    <!-- Thông số huấn luyện -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <i class="fas fa-cog"></i> Thông số huấn luyện
+      </div>
+      <div class="row">
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="epochs" class="form-label">Số epochs</label>
+            <input
+              type="number"
+              class="form-control"
+              id="epochs"
+              name="epochs"
+              value="100"
+              min="1"
+              max="1000"
+            />
+            <div class="form-text">Số lần lặp lại toàn bộ dữ liệu</div>
+          </div>
         </div>
-        <div class="row">
-          <div class="col-md-3">
-            <div class="mb-3">
-              <label for="epochs" class="form-label">Số epochs</label>
-              <input
-                type="number"
-                class="form-control"
-                id="epochs"
-                name="epochs"
-                value="100"
-                min="1"
-                max="1000"
-              />
-              <div class="form-text">Số lần lặp lại toàn bộ dữ liệu</div>
-            </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="batch_size" class="form-label">Batch size</label>
+            <input
+              type="number"
+              class="form-control"
+              id="batch_size"
+              name="batch_size"
+              value="16"
+              min="1"
+              max="128"
+            />
+            <div class="form-text">Số lượng mẫu mỗi lần cập nhật</div>
           </div>
-          <div class="col-md-3">
-            <div class="mb-3">
-              <label for="batch_size" class="form-label">Batch size</label>
-              <input
-                type="number"
-                class="form-control"
-                id="batch_size"
-                name="batch_size"
-                value="16"
-                min="1"
-                max="128"
-              />
-              <div class="form-text">Số lượng mẫu mỗi lần cập nhật</div>
-            </div>
+        </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="learning_rate" class="form-label">Learning rate</label>
+            <input
+              type="number"
+              class="form-control"
+              id="learning_rate"
+              name="learning_rate"
+              value="0.001"
+              min="0.0001"
+              max="0.1"
+              step="0.0001"
+            />
+            <div class="form-text">Tốc độ học của thuật toán</div>
           </div>
-          <div class="col-md-3">
-            <div class="mb-3">
-              <label for="learning_rate" class="form-label"
-                >Learning rate</label
-              >
-              <input
-                type="number"
-                class="form-control"
-                id="learning_rate"
-                name="learning_rate"
-                value="0.001"
-                min="0.0001"
-                max="0.1"
-                step="0.0001"
-              />
-              <div class="form-text">Tốc độ học của thuật toán</div>
-            </div>
-          </div>
-          <div class="col-md-3">
-            <div class="mb-3">
-              <label for="image_size" class="form-label">Kích thước ảnh</label>
-              <input
-                type="number"
-                class="form-control"
-                id="image_size"
-                name="image_size"
-                value="640"
-                min="320"
-                max="1280"
-                step="32"
-              />
-              <div class="form-text">Kích thước ảnh đầu vào (pixel)</div>
-            </div>
+        </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="image_size" class="form-label">Kích thước ảnh</label>
+            <input
+              type="number"
+              class="form-control"
+              id="image_size"
+              name="image_size"
+              value="640"
+              min="320"
+              max="1280"
+              step="32"
+            />
+            <div class="form-text">Kích thước ảnh đầu vào (pixel)</div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Ảnh mẫu cho huấn luyện section -->
-      <div class="form-section">
-        <div class="form-section-title">
-          <i class="fas fa-images"></i> Ảnh mẫu cho huấn luyện
-        </div>
-        <div class="alert alert-info">
-          <i class="fas fa-info-circle"></i> Chọn ít nhất một ảnh mẫu để huấn
-          luyện mô hình. Ảnh mẫu nên có bounding box và nhãn đã được định nghĩa.
-        </div>
-        <div class="table-responsive sample-table">
-          <table class="table table-bordered">
-            <thead class="table-light">
-              <tr>
-                <th style="width: 50px">Chọn</th>
-                <th>ID mẫu</th>
-                <th style="width: 100px">Ảnh</th>
-                <th>Nhãn</th>
-                <th>Ngày tạo</th>
-                <th>Bounding Box</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% if sample_images %} {% for sample in sample_images %}
-              <tr>
-                <td class="text-center">
-                  <input
-                    class="form-check-input sample-checkbox"
-                    type="checkbox"
-                    name="sample_images[]"
-                    value="{{ sample.idTemplate }}"
-                    data-id="{{ sample.idTemplate }}"
-                  />
-                </td>
-                <td>{{ sample.idTemplate }}</td>
-                <td>
-                  <img
-                    src="{{ sample.imageUrl | default('/static/placeholder-camera.jpg') }}"
-                    class="sample-image"
-                    alt="Sample image"
-                  />
-                </td>
-                <td>
-                  {% if sample.labels %} {% for label in sample.labels %}
-                  <span class="badge bg-info badge-label"
-                    >{{ label.typeLabel }}</span
-                  >
-                  {% endfor %} {% endif %}
-                </td>
-                <td>{{ sample.timeUpdate }}</td>
-                <td>
-                  {% if sample.boundingBox %} {% for box in sample.boundingBox
-                  %}
-                  <span class="badge bg-warning badge-label">
-                    {{ box.xCenter }}, {{ box.yCenter }}, {{ box.width }}, {{
-                    box.height }}
-                  </span>
-                  {% endfor %} {% endif %}
-                </td>
-              </tr>
-              {% endfor %} {% else %}
-              <tr>
-                <td colspan="6" class="text-center">Chưa có ảnh mẫu nào</td>
-              </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
+    <!-- Ảnh mẫu cho huấn luyện section -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <i class="fas fa-images"></i> Ảnh mẫu cho huấn luyện
       </div>
-
-      <input type="hidden" name="model_file" id="model_file" value="" />
-      <input type="hidden" name="config_file" id="config_file" value="" />
-      <input type="hidden" name="accuracy" id="accuracy" value="0" />
-      <input type="hidden" id="trained" name="trained" value="false" />
-      <input
-        type="hidden"
-        id="training_success"
-        name="training_success"
-        value="false"
-      />
-      <input type="hidden" id="model_path" name="model_path" value="" />
-
-      <div class="action-buttons">
-        <div></div>
-        <div>
-          <a
-            href="{{ url_for('model_management') }}"
-            class="btn btn-secondary me-2"
-          >
-            <i class="fas fa-times"></i> Hủy
-          </a>
-          <button
-            type="button"
-            class="btn btn-primary me-2"
-            id="trainModelBtn"
-            disabled
-          >
-            <i class="fas fa-cogs"></i> Huấn luyện
-          </button>
-          <button type="submit" class="btn btn-success fade" id="saveModelBtn">
-            <i class="fas fa-save"></i> Lưu mô hình
-          </button>
-        </div>
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> Chọn ít nhất một ảnh mẫu để huấn
+        luyện mô hình. Ảnh mẫu nên có bounding box và nhãn đã được định nghĩa.
       </div>
+      <div class="table-responsive sample-table">
+        <table class="table table-bordered">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 50px">Chọn</th>
+              <th>ID mẫu</th>
+              <th style="width: 100px">Ảnh</th>
+              <th>Nhãn</th>
+              <th>Ngày tạo</th>
+              <th>Bounding Box</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if sample_images %} {% for sample in sample_images %}
+            <tr>
+              <td class="text-center">
+                <input
+                  class="form-check-input sample-checkbox"
+                  type="checkbox"
+                  name="sample_images[]"
+                  value="{{ sample.idTemplate }}"
+                  data-id="{{ sample.idTemplate }}"
+                />
+              </td>
+              <td>{{ sample.idTemplate }}</td>
+              <td>
+                <img
+                  src="{{ sample.imageUrl | default('/static/placeholder-camera.jpg') }}"
+                  class="sample-image"
+                  alt="Sample image"
+                />
+              </td>
+              <td>
+                {% if sample.labels %} {% for label in sample.labels %}
+                <span class="badge bg-info badge-label"
+                  >{{ label.typeLabel }}</span
+                >
+                {% endfor %} {% endif %}
+              </td>
+              <td>{{ sample.timeUpdate }}</td>
+              <td>
+                {% if sample.boundingBox %} {% for box in sample.boundingBox %}
+                <span class="badge bg-warning badge-label">
+                  {{ box.xCenter }}, {{ box.yCenter }}, {{ box.width }}, {{
+                  box.height }}
+                </span>
+                {% endfor %} {% endif %}
+              </td>
+            </tr>
+            {% endfor %} {% else %}
+            <tr>
+              <td colspan="6" class="text-center">Chưa có ảnh mẫu nào</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <input type="hidden" name="model_file" id="model_file" value="" />
+    <input type="hidden" name="config_file" id="config_file" value="" />
+    <input type="hidden" name="accuracy" id="accuracy" value="0" />
+    <input type="hidden" id="trained" name="trained" value="false" />
+    <input
+      type="hidden"
+      id="training_success"
+      name="training_success"
+      value="false"
+    />
+    <input type="hidden" id="model_path" name="model_path" value="" />
+
+    <div class="action-buttons">
+      <div></div>
+      <div>
+        <a
+          href="{{ url_for('model_management') }}"
+          class="btn btn-secondary me-2"
+        >
+          <i class="fas fa-times"></i> Hủy
+        </a>
+        <button
+          type="button"
+          class="btn btn-primary me-2"
+          id="trainModelBtn"
+          disabled
+        >
+          <i class="fas fa-cogs"></i> Huấn luyện
+        </button>
+        <button type="submit" class="btn btn-success fade" id="saveModelBtn">
+          <i class="fas fa-save"></i> Lưu mô hình
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -508,11 +500,19 @@ block extra_css %}
         </button>
         <button
           type="button"
+          class="btn btn-danger"
+          id="closeDialog"
+          style="display: none"
+        >
+          Hủy
+        </button>
+        <button
+          type="button"
           class="btn btn-success"
           id="finishTrainingBtn"
           style="display: none"
         >
-          Hoàn tất
+          Lưu mô hình
         </button>
       </div>
     </div>

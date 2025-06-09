@@ -5,7 +5,6 @@ from .fraud_template_dao import FraudTemplateDAO
 from .fraud_label_dao import FraudLabelDAO
 from .bounding_box_dao import BoundingBoxDAO
 from .training_lost_dao import TrainingLostDAO
-from .fraud_dao import FraudDAO
 
 __all__ = [
     'ModelDAO',

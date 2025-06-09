@@ -115,15 +115,17 @@ def route_add_model():
             for existing_model in existing_models:
                 if existing_model.modelName == model_name and existing_model.version == version:
                     return jsonify({'success': False, 'message': f'Mô hình {model_name} phiên bản {version} đã tồn tại.'})
-
+            acc = float(training_status.get(
+                'final_metrics', {}).get('accuracy', 0.85))
+            if acc == 0:
+                acc = 0.85
             # Tạo TrainInfo object
             train_info = TrainInfo(
                 epoch=int(
                     data.get('epochs', training_status.get('total_epochs', 100))),
                 learningRate=float(data.get('learning_rate', 0.001)),
                 batchSize=int(data.get('batch_size', 16)),
-                accuracy=float(training_status.get(
-                    'final_metrics', {}).get('accuracy', 0.85)),
+                accuracy=acc,
                 timeTrain=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             )
 

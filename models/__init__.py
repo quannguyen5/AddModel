@@ -5,8 +5,6 @@ from .fraud_template import FraudTemplate
 from .fraud_label import FraudLabel
 from .bounding_box import BoundingBox
 from .training_lost import TrainingLost
-from .phase_detection import PhaseDetection
-from .fraud import Fraud
 
 __all__ = [
     'Model',
@@ -16,5 +14,4 @@ __all__ = [
     'FraudLabel',
     'BoundingBox',
     'TrainingLost',
-    'PhaseDetection',
 ]

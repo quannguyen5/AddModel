@@ -138,11 +138,11 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100, batc
                                 if type_label == "huitou":
                                     class_id = 0
                                 elif type_label == "normal":
-                                    class_id = 2
+                                    class_id = 1
                                 elif type_label == "phone":
-                                    class_id = 3
+                                    class_id = 2
                                 else:
-                                    class_id = 4
+                                    class_id = 3
 
                         # Cập nhật số lượng class
                         class_counts[class_id] = class_counts.get(
