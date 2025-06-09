@@ -1,0 +1,12 @@
+
+# YOLOv8 dataset config
+path: D:\Ky2nam4\Phantichthietkekientruchethong\AddModel\model_train_logs\7341\dataset
+train: train/images
+val: val/images
+
+# Classes
+names:
+  0: huitou
+  1: normal
+  2: phone
+  3: zuobi
