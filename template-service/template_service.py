@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 import os
+import shutil
 
 from dao.fraud_template_dao import FraudTemplateDAO
 
@@ -19,12 +20,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files
-STATIC_DIR = "static"
-if not os.path.exists(STATIC_DIR):
-    os.makedirs(STATIC_DIR)
+# Chỉ dùng thư mục images
+IMAGES_DIR = "images"
+if not os.path.exists(IMAGES_DIR):
+    os.makedirs(IMAGES_DIR)
+    print(f"Created directory: {IMAGES_DIR}")
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Mount images folder
+app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 # DAO
 template_dao = FraudTemplateDAO()
@@ -64,17 +67,25 @@ async def get_template(template_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/images/{filename}")
-async def get_image(filename: str):
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """Upload ảnh mới vào images folder"""
     try:
-        # Tìm file trong static directory
-        file_path = os.path.join(STATIC_DIR, filename)
+        # Kiểm tra file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=400, detail="File must be an image")
 
-        if os.path.exists(file_path):
-            return FileResponse(file_path)
+        # Lưu file vào images folder
+        file_path = os.path.join(IMAGES_DIR, file.filename)
 
-        # Placeholder nếu không tìm thấy
-        return {"error": "Image not found"}
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Return URL
+        image_url = f"/images/{file.filename}"
+        return {"success": True, "imageUrl": image_url, "filename": file.filename}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -86,6 +97,25 @@ async def delete_template(template_id: int):
         if not success:
             raise HTTPException(status_code=404, detail="Template not found")
         return {"success": True, "message": "Template deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/list-images")
+async def list_images():
+    """List tất cả images trong folder images"""
+    try:
+        images = []
+
+        for filename in os.listdir(IMAGES_DIR):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                images.append({
+                    "filename": filename,
+                    "url": f"/images/{filename}"
+                })
+
+        return {"images": images, "count": len(images)}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

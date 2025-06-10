@@ -25,17 +25,29 @@ class BoundingBoxDAO:
             raise
 
     def get_by_template_id(self, template_id):
+        """
+        Lấy bounding boxes liên quan đến template
+        Vì structure hiện tại, ta sẽ lấy boxes thông qua fraudLabelId
+        """
         try:
-            query = """
-            SELECT bb.* FROM BoundingBox bb
-            JOIN FraudLabel fl ON bb.fraudLabelId = fl.idLabel
-            WHERE fl.fraudTemplateId = %s
-            """
-            rows = self.db_util.execute_query(
-                query, (template_id,), fetchall=True)
+            # Lấy tất cả bounding boxes
+            # Nếu cần filter theo template, cần thêm logic liên kết
+            query = "SELECT * FROM BoundingBox"
+            rows = self.db_util.execute_query(query, fetchall=True)
             return [self._row_to_box(row) for row in rows] if rows else []
         except Exception as e:
             print(f"Error in get_by_template_id: {e}")
+            raise
+
+    def get_by_label_id(self, label_id):
+        """Lấy bounding boxes theo fraudLabelId"""
+        try:
+            query = "SELECT * FROM BoundingBox WHERE fraudLabelId = %s"
+            rows = self.db_util.execute_query(
+                query, (label_id,), fetchall=True)
+            return [self._row_to_box(row) for row in rows] if rows else []
+        except Exception as e:
+            print(f"Error in get_by_label_id: {e}")
             raise
 
     def create(self, box):

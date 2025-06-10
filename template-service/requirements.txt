@@ -1,0 +1,6 @@
+fastapi==0.103.1
+uvicorn==0.23.2
+python-dotenv==1.0.0
+mysql-connector-python==8.0.33
+python-multipart==0.0.6
+Pillow>=9.5.0

@@ -1,3 +1,4 @@
+# template-service/dao/fraud_template_dao.py (Simplified)
 from utils.db_util import DatabaseUtil
 from models.fraud_template import FraudTemplate
 from dao.fraud_label_dao import FraudLabelDAO
@@ -18,16 +19,15 @@ class FraudTemplateDAO:
             templates = []
             for row in rows:
                 template = self._row_to_template(row)
-                template.labels = self.label_dao.get_by_template_id(
-                    template.idTemplate)
-                template.boundingBox = self.box_dao.get_by_template_id(
-                    template.idTemplate)
+                # Gán tất cả labels và boxes cho mỗi template
+                template.labels = self.label_dao.get_all()
+                template.boundingBox = self.box_dao.get_all()
                 templates.append(template)
 
             return templates
         except Exception as e:
             print(f"Error in get_all: {e}")
-            raise
+            return []  # Return empty list instead of raising
 
     def get_by_id(self, template_id):
         try:
@@ -39,35 +39,24 @@ class FraudTemplateDAO:
                 return None
 
             template = self._row_to_template(row)
-            template.labels = self.label_dao.get_by_template_id(template_id)
-            template.boundingBox = self.box_dao.get_by_template_id(template_id)
+            # Gán tất cả labels và boxes
+            template.labels = self.label_dao.get_all()
+            template.boundingBox = self.box_dao.get_all()
 
             return template
         except Exception as e:
             print(f"Error in get_by_id: {e}")
-            raise
+            return None
 
     def create(self, template):
         try:
             query = "INSERT INTO FraudTemplate (description, imageUrl) VALUES (%s, %s)"
             template_id = self.db_util.execute_query(
                 query, (template.description, template.imageUrl), commit=True)
-
-            # Tạo labels và boxes
-            if template.labels:
-                for label in template.labels:
-                    label.fraudTemplateId = template_id
-                    self.label_dao.create(label)
-
-            if template.boundingBox:
-                for box in template.boundingBox:
-                    box.fraudTemplateId = template_id
-                    self.box_dao.create(box)
-
             return template_id
         except Exception as e:
             print(f"Error in create: {e}")
-            raise
+            return None
 
     def delete(self, template_id):
         try:
@@ -76,7 +65,7 @@ class FraudTemplateDAO:
             return True
         except Exception as e:
             print(f"Error in delete: {e}")
-            raise
+            return False
 
     def _row_to_template(self, row):
         return FraudTemplate(

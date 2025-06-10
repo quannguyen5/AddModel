@@ -26,9 +26,8 @@ class FraudLabelDAO:
 
     def get_by_template_id(self, template_id):
         try:
-            query = "SELECT * FROM FraudLabel WHERE fraudTemplateId = %s"
-            rows = self.db_util.execute_query(
-                query, (template_id,), fetchall=True)
+            query = "SELECT * FROM FraudLabel"
+            rows = self.db_util.execute_query(query, fetchall=True)
             return [self._row_to_label(row) for row in rows] if rows else []
         except Exception as e:
             print(f"Error in get_by_template_id: {e}")
@@ -36,9 +35,9 @@ class FraudLabelDAO:
 
     def create(self, label):
         try:
-            query = "INSERT INTO FraudLabel (description, typeLabel, fraudTemplateId) VALUES (%s, %s, %s)"
+            query = "INSERT INTO FraudLabel (description, typeLabel) VALUES (%s, %s)"
             return self.db_util.execute_query(
-                query, (label.description, label.typeLabel, label.fraudTemplateId), commit=True)
+                query, (label.description, label.typeLabel), commit=True)
         except Exception as e:
             print(f"Error in create: {e}")
             raise

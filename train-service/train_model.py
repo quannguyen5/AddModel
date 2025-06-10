@@ -33,13 +33,19 @@ def download_template_image(template_id, save_dir):
         if not image_url:
             return None, None
 
-        # Tải ảnh
-        if image_url.startswith('http'):
-            image_response = requests.get(image_url, timeout=30)
-        else:
+        # Tải ảnh từ /images/ endpoint
+        if image_url.startswith('/images/'):
+            # URL dạng /images/filename.jpg
             full_url = f"{Config.TEMPLATE_SERVICE_URL}{image_url}"
-            image_response = requests.get(full_url, timeout=30)
+        elif image_url.startswith('http'):
+            # URL đầy đủ
+            full_url = image_url
+        else:
+            # Fallback
+            full_url = f"{Config.TEMPLATE_SERVICE_URL}/images/{image_url}"
 
+        print(f"Downloading image from: {full_url}")
+        image_response = requests.get(full_url, timeout=30)
         image_response.raise_for_status()
 
         # Lưu ảnh

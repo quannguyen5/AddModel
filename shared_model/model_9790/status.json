@@ -1,0 +1,16 @@
+{
+  "status": "completed",
+  "model_id": "9790",
+  "model_name": "Model2",
+  "current_epoch": 2,
+  "total_epochs": 2,
+  "start_time": "2025-06-10 20:31:42",
+  "template_ids": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "end_time": "2025-06-10 20:32:55"
+}
