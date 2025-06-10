@@ -87,6 +87,18 @@ async def get_model(model_id: int):
 @app.post("/models")
 async def create_model(model_request: ModelCreateRequest):
     try:
+        # Check if model with same name and version already exists
+        existing_model = model_dao.get_by_name_and_version(
+            model_request.model_name,
+            model_request.version
+        )
+
+        if existing_model:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model with name '{model_request.model_name}' and version '{model_request.version}' already exists. Please use a different name or version."
+            )
+
         # Tạo train info
         train_info = TrainInfo(
             epoch=model_request.epochs,
@@ -116,9 +128,22 @@ async def create_model(model_request: ModelCreateRequest):
             )
             training_data_dao.create(training_data)
 
-        return {"success": True, "model_id": model_id}
+        return {"success": True, "model_id": model_id, "message": "Model created successfully"}
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (like duplicate error)
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Handle database errors
+        error_message = str(e)
+        if "Duplicate entry" in error_message and "UNIQUE_MODEL_NAME_VERSION" in error_message:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model with name '{model_request.model_name}' and version '{model_request.version}' already exists. Please use a different name or version."
+            )
+        else:
+            raise HTTPException(
+                status_code=500, detail=f"Database error: {error_message}")
 
 
 @app.delete("/models/{model_id}")
@@ -128,6 +153,19 @@ async def delete_model(model_id: int):
         if not success:
             raise HTTPException(status_code=404, detail="Model not found")
         return {"success": True, "message": "Model deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/check-model-exists/{model_name}/{version}")
+async def check_model_exists(model_name: str, version: str):
+    """Check if model with given name and version exists"""
+    try:
+        existing_model = model_dao.get_by_name_and_version(model_name, version)
+        return {
+            "exists": existing_model is not None,
+            "model_id": existing_model.idModel if existing_model else None
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

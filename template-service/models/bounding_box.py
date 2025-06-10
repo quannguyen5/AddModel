@@ -1,6 +1,7 @@
 class BoundingBox:
     def __init__(self, idBox=None, xCenter=None, yCenter=None, width=None, height=None,
-                 xPixel=None, yPixel=None, widthPixel=None, heightPixel=None, fraudLabelId=None):
+                 xPixel=None, yPixel=None, widthPixel=None, heightPixel=None,
+                 fraudTemplateId=None, fraudLabelId=None):
         self.idBox = idBox
         self.xCenter = xCenter
         self.yCenter = yCenter
@@ -10,10 +11,11 @@ class BoundingBox:
         self.yPixel = yPixel
         self.widthPixel = widthPixel
         self.heightPixel = heightPixel
+        self.fraudTemplateId = fraudTemplateId
         self.fraudLabelId = fraudLabelId
 
     def to_dict(self):
-        return {
+        box_dict = {
             'idBox': self.idBox,
             'xCenter': self.xCenter,
             'yCenter': self.yCenter,
@@ -23,5 +25,7 @@ class BoundingBox:
             'yPixel': self.yPixel,
             'widthPixel': self.widthPixel,
             'heightPixel': self.heightPixel,
+            'fraudTemplateId': self.fraudTemplateId,
             'fraudLabelId': self.fraudLabelId
         }
+        return box_dict

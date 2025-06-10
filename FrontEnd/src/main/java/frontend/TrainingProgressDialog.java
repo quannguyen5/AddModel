@@ -18,6 +18,8 @@ public class TrainingProgressDialog extends JDialog {
     private JProgressBar progressBar;
     private JTextArea logArea;
     private JButton cancelButton;
+    private JButton saveButton;
+    private JButton discardButton;
     private JButton closeButton;
 
     private JPanel metricsPanel;
@@ -221,14 +223,32 @@ public class TrainingProgressDialog extends JDialog {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
+        // Cancel button - hiển thị khi đang training
         cancelButton = new JButton("Cancel Training");
         cancelButton.addActionListener(this::onCancelClicked);
 
+        // Save button - hiển thị khi training hoàn thành
+        saveButton = new JButton("Save Model");
+        saveButton.addActionListener(this::onSaveClicked);
+        saveButton.setVisible(false);
+        saveButton.setBackground(new Color(34, 139, 34)); // Green
+        saveButton.setForeground(Color.WHITE);
+
+        // Discard button - hiển thị khi training hoàn thành
+        discardButton = new JButton("Discard");
+        discardButton.addActionListener(this::onDiscardClicked);
+        discardButton.setVisible(false);
+        discardButton.setBackground(new Color(220, 20, 60)); // Red
+        discardButton.setForeground(Color.WHITE);
+
+        // Close button - hiển thị khi training failed/cancelled
         closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dispose());
         closeButton.setVisible(false);
 
         panel.add(cancelButton);
+        panel.add(saveButton);
+        panel.add(discardButton);
         panel.add(closeButton);
 
         return panel;
@@ -386,6 +406,99 @@ public class TrainingProgressDialog extends JDialog {
         }
     }
 
+    private void onSaveClicked(ActionEvent e) {
+        if (modelRequest == null) {
+            JOptionPane.showMessageDialog(this,
+                    "No model data available to save.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Disable buttons while saving
+        saveButton.setEnabled(false);
+        discardButton.setEnabled(false);
+        saveButton.setText("Saving...");
+
+        SwingWorker<Void, Void> saveWorker = new SwingWorker<Void, Void>() {
+            private String result = null;
+            private Exception error = null;
+
+            @Override
+            protected Void doInBackground() throws Exception {
+                try {
+                    result = apiClient.createModel(modelRequest);
+                } catch (Exception e) {
+                    error = e;
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                saveButton.setText("Save Model");
+                saveButton.setEnabled(true);
+                discardButton.setEnabled(true);
+
+                if (error == null) {
+                    modelSaved = true;
+                    appendLog("Model saved successfully!");
+
+                    JOptionPane.showMessageDialog(TrainingProgressDialog.this,
+                            "Model saved successfully!\n" + result,
+                            "Success",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    dispose();
+                } else {
+                    appendLog("Error saving model: " + error.getMessage());
+
+                    JOptionPane.showMessageDialog(TrainingProgressDialog.this,
+                            "Error saving model: " + error.getMessage(),
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        saveWorker.execute();
+    }
+
+    private void onDiscardClicked(ActionEvent e) {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Are you sure you want to discard this trained model?\nThis action cannot be undone.",
+                "Confirm Discard",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            // Disable buttons while discarding
+            discardButton.setEnabled(false);
+            saveButton.setEnabled(false);
+            discardButton.setText("Discarding...");
+
+            SwingWorker<Void, Void> discardWorker = new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() throws Exception {
+                    deleteTrainingFolder();
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    appendLog("Training data discarded.");
+
+                    JOptionPane.showMessageDialog(TrainingProgressDialog.this,
+                            "Model discarded. Training data has been removed.",
+                            "Model Discarded",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                    dispose();
+                }
+            };
+            discardWorker.execute();
+        }
+    }
+
     private void onTrainingFinished(TrainingStatus status) {
         if ("completed".equals(status.getStatus())) {
             trainingCompleted = true;
@@ -395,115 +508,55 @@ public class TrainingProgressDialog extends JDialog {
                 parentDialog.onTrainingCompleted();
             }
 
-            // Show dialog asking if user wants to save the model
-            showSaveModelDialog();
+            // Show Save/Discard buttons instead of popup
+            showSaveDiscardButtons();
 
         } else {
-            // Training failed or cancelled
-            cancelButton.setText("Close");
-            cancelButton.removeActionListener(this::onCancelClicked);
-            cancelButton.addActionListener(e -> {
-                // Delete training folder if training failed/cancelled
-                deleteTrainingFolder();
-                dispose();
-            });
+            // Training failed or cancelled - show close button
+            showCloseButton();
         }
     }
 
-    private void showSaveModelDialog() {
-        String[] options = {"Save Model", "Discard"};
+    private void showSaveDiscardButtons() {
+        SwingUtilities.invokeLater(() -> {
+            cancelButton.setVisible(false);
+            saveButton.setVisible(true);
+            discardButton.setVisible(true);
 
-        int choice = JOptionPane.showOptionDialog(
-                this,
-                "Training completed successfully!\n\nDo you want to save this model?",
-                "Save Model",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                options,
-                options[0]
-        );
+            appendLog("\n=== Training Completed ===");
+            appendLog("Choose to Save the model or Discard it.");
 
-        if (choice == 0) {
-            // User chose to save model
-            saveModel();
-        } else {
-            // User chose to discard model
-            discardModel();
-        }
+            revalidate();
+            repaint();
+        });
     }
 
-    private void saveModel() {
-        if (modelRequest == null) {
-            JOptionPane.showMessageDialog(this,
-                    "No model data available to save.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
-            dispose();
-            return;
-        }
+    private void showCloseButton() {
+        SwingUtilities.invokeLater(() -> {
+            cancelButton.setVisible(false);
+            saveButton.setVisible(false);
+            discardButton.setVisible(false);
+            closeButton.setVisible(true);
 
-        try {
-            String message = apiClient.createModel(modelRequest);
-            modelSaved = true;
-
-            JOptionPane.showMessageDialog(this,
-                    "Model saved successfully!\n" + message,
-                    "Success",
-                    JOptionPane.INFORMATION_MESSAGE);
-
-            dispose();
-
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this,
-                    "Error saving model: " + ex.getMessage(),
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
-
-            // Show option to retry or discard
-            int retry = JOptionPane.showConfirmDialog(this,
-                    "Failed to save model. Do you want to retry?",
-                    "Save Failed",
-                    JOptionPane.YES_NO_OPTION);
-
-            if (retry == JOptionPane.YES_OPTION) {
-                saveModel(); // Retry
-            } else {
-                discardModel(); // Discard
-            }
-        }
-    }
-
-    private void discardModel() {
-        int confirm = JOptionPane.showConfirmDialog(this,
-                "Are you sure you want to discard this trained model?\nThis action cannot be undone.",
-                "Confirm Discard",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE);
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            deleteTrainingFolder();
-            JOptionPane.showMessageDialog(this,
-                    "Model discarded. Training data has been removed.",
-                    "Model Discarded",
-                    JOptionPane.INFORMATION_MESSAGE);
-            dispose();
-        } else {
-            // User changed their mind, show save dialog again
-            showSaveModelDialog();
-        }
+            revalidate();
+            repaint();
+        });
     }
 
     private void deleteTrainingFolder() {
         try {
-            // Call API to delete training folder
-            String deleteUrl = "http://localhost:8002/delete-training/" + modelId;
-            // This would need to be implemented in the train service
-            // For now, just log the action
-            System.out.println("Request to delete training folder for model: " + modelId);
-            appendLog("Training folder deletion requested for model: " + modelId);
+            DeleteResponse response = apiClient.deleteTrainingFolder(modelId);
+            if (response.isSuccess()) {
+                appendLog("Training folder deleted successfully: " + response.getMessage());
+                System.out.println("Training folder deleted for model: " + modelId);
+            } else {
+                appendLog("Failed to delete training folder: " + response.getMessage());
+                System.err.println("Failed to delete training folder: " + response.getMessage());
+            }
         } catch (Exception e) {
-            System.err.println("Error requesting folder deletion: " + e.getMessage());
+            String errorMsg = "Error deleting training folder: " + e.getMessage();
+            System.err.println(errorMsg);
+            appendLog(errorMsg);
         }
     }
 

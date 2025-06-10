@@ -83,26 +83,8 @@ async def start_training(train_request: TrainRequest):
         model_id = hash(
             f"{train_request.model_name}_{train_request.version}") % 10000 + 1000
 
-        # Gửi yêu cầu tạo model đến model service
-        model_data = {
-            "model_name": train_request.model_name,
-            "model_type": train_request.model_type,
-            "version": train_request.version,
-            "description": f"Model được tạo từ train service",
-            "template_ids": train_request.template_ids,
-            "epochs": train_request.epochs,
-            "batch_size": train_request.batch_size,
-            "learning_rate": train_request.learning_rate,
-            "accuracy": 0.0  # Sẽ cập nhật sau khi train xong
-        }
-
-        try:
-            response = requests.post(f"{Config.MODEL_SERVICE_URL}/models",
-                                     json=model_data, timeout=30)
-            if response.status_code == 200:
-                print(f"Model {model_id} created in model service")
-        except Exception as e:
-            print(f"Warning: Could not create model in model service: {e}")
+        # REMOVED: Không tạo model trong database ở đây nữa
+        # Model chỉ được tạo khi user bấm Save sau khi training hoàn thành
 
         # Start training
         training_thread = threading.Thread(
@@ -195,6 +177,7 @@ async def cleanup_failed_training_api(model_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error cleaning up training: {str(e)}")
+
 
 @app.get("/health")
 async def health_check():

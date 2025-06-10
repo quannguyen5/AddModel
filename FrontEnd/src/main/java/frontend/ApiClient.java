@@ -72,6 +72,15 @@ public class ApiClient {
         sendPostRequest(trainServiceUrl + "/cancel/" + modelId, "{}");
     }
     
+    public DeleteResponse deleteTrainingFolder(String modelId) throws Exception {
+        String response = sendDeleteRequest(trainServiceUrl + "/delete-training/" + modelId);
+        return gson.fromJson(response, DeleteResponse.class);
+    }
+    
+    public void cleanupFailedTraining(String modelId) throws Exception {
+        sendPostRequest(trainServiceUrl + "/cleanup/" + modelId, "{}");
+    }
+    
     public ImageIcon loadImageFromUrl(String imageUrl) {
         if (imageUrl == null || imageUrl.isEmpty()) {
             return null;
@@ -205,10 +214,42 @@ public class ApiClient {
         
         return response.toString();
     }
+    
+    private String sendDeleteRequest(String urlString) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("DELETE");
+        connection.setRequestProperty("Content-Type", "application/json");
+        
+        int responseCode = connection.getResponseCode();
+        BufferedReader reader;
+        
+        if (responseCode >= 200 && responseCode < 300) {
+            reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+        } else {
+            reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
+        }
+        
+        StringBuilder response = new StringBuilder();
+        String line;
+        
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        
+        reader.close();
+        connection.disconnect();
+        
+        if (responseCode < 200 || responseCode >= 300) {
+            throw new Exception("HTTP " + responseCode + ": " + response.toString());
+        }
+        
+        return response.toString();
+    }
 }
 
 
-// casc lop data
+// Các class data
 class ModelData {
     private int idModel;
     private String modelName;
@@ -219,15 +260,10 @@ class ModelData {
     private double accuracy;
 
     public int getId() { return idModel; }
-
     public String getModelName() { return modelName; }
-
     public String getModelType() { return modelType; }
-
     public String getVersion() { return version; }
-
     public String getLastUpdate() { return lastUpdate; }
-
     public double getAccuracy() { return accuracy; }
 }
 
@@ -240,15 +276,10 @@ class TemplateData {
     private List<Map<String, Object>> boundingBox;
 
     public int getIdTemplate() { return idTemplate; }
-
     public String getDescription() { return description; }
-
     public String getImageUrl() { return imageUrl; }
-
     public String getTimeUpdate() { return timeUpdate; }
-
     public List<Map<String, Object>> getLabels() { return labels; }
-
     public List<Map<String, Object>> getBoundingBox() { return boundingBox; }
 }
 
@@ -263,7 +294,6 @@ class CreateModelRequest {
     private double learning_rate;
     private double accuracy;
 
-    
     public CreateModelRequest(String modelName, String modelType, String version, 
                             String description, List<Integer> templateIds, 
                             int epochs, int batchSize, double learningRate, double accuracy) {
@@ -364,4 +394,15 @@ class TrainingStatus {
     
     public String getModel_path() { return model_path; }
     public void setModel_path(String model_path) { this.model_path = model_path; }
+}
+
+class DeleteResponse {
+    private boolean success;
+    private String message;
+    
+    public boolean isSuccess() { return success; }
+    public void setSuccess(boolean success) { this.success = success; }
+    
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
 }

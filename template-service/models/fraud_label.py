@@ -1,3 +1,6 @@
+from utils.enums import TypeLabel
+
+
 class FraudLabel:
     def __init__(self, idLabel=None, description=None, typeLabel=None):
         self.idLabel = idLabel
@@ -5,8 +8,10 @@ class FraudLabel:
         self.typeLabel = typeLabel
 
     def to_dict(self):
-        return {
+        label_dict = {
             'idLabel': self.idLabel,
             'description': self.description,
-            'typeLabel': self.typeLabel
+            'typeLabel': self.typeLabel.value if isinstance(self.typeLabel, TypeLabel) else self.typeLabel
         }
+
+        return label_dict

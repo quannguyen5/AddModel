@@ -1,5 +1,7 @@
+import logging
 from utils.db_util import DatabaseUtil
 from models.fraud_label import FraudLabel
+from utils.enums import TypeLabel
 
 
 class FraudLabelDAO:
@@ -10,41 +12,58 @@ class FraudLabelDAO:
         try:
             query = "SELECT * FROM FraudLabel"
             rows = self.db_util.execute_query(query, fetchall=True)
-            return [self._row_to_label(row) for row in rows] if rows else []
+
+            if not rows:
+                return []
+
+            labels = []
+            for row in rows:
+                label = FraudLabel(
+                    idLabel=row['idLabel'],
+                    description=row['description'],
+                    typeLabel=row['typeLabel']
+                )
+                labels.append(label)
+            return labels
         except Exception as e:
-            print(f"Error in get_all: {e}")
+            logging.error(f"Error in FraudLabelDAO.get_all: {str(e)}")
             raise
 
     def get_by_id(self, label_id):
         try:
             query = "SELECT * FROM FraudLabel WHERE idLabel = %s"
             row = self.db_util.execute_query(query, (label_id,), fetchone=True)
-            return self._row_to_label(row) if row else None
+
+            if not row:
+                return None
+
+            label = FraudLabel(
+                idLabel=row['idLabel'],
+                description=row['description'],
+                typeLabel=row['typeLabel']
+            )
+
+            return label
         except Exception as e:
-            print(f"Error in get_by_id: {e}")
+            logging.error(f"Error in FraudLabelDAO.get_by_id: {str(e)}")
             raise
 
     def get_by_template_id(self, template_id):
         try:
-            query = "SELECT * FROM FraudLabel"
-            rows = self.db_util.execute_query(query, fetchall=True)
-            return [self._row_to_label(row) for row in rows] if rows else []
-        except Exception as e:
-            print(f"Error in get_by_template_id: {e}")
-            raise
+            query = "SELECT * FROM BoundingBox WHERE fraudTemplateId = %s"
+            rows = self.db_util.execute_query(
+                query, (template_id,), fetchall=True)
 
-    def create(self, label):
-        try:
-            query = "INSERT INTO FraudLabel (description, typeLabel) VALUES (%s, %s)"
-            return self.db_util.execute_query(
-                query, (label.description, label.typeLabel), commit=True)
-        except Exception as e:
-            print(f"Error in create: {e}")
-            raise
+            if not rows:
+                return []
 
-    def _row_to_label(self, row):
-        return FraudLabel(
-            idLabel=row['idLabel'],
-            description=row['description'],
-            typeLabel=row['typeLabel']
-        )
+            labels = []
+            for row in rows:
+                label = self.get_by_id(row['fraudLabelId'])
+                labels.append(label)
+
+            return labels
+        except Exception as e:
+            logging.error(
+                f"Error in FraudLabelDAO.get_by_template_id: {str(e)}")
+            raise

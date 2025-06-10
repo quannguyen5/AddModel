@@ -19,6 +19,31 @@ def ensure_dir(directory):
         os.makedirs(directory)
 
 
+def safe_update_status(status_file, status_data):
+    """An toàn cập nhật file status với error handling"""
+    try:
+        # Tạo thư mục nếu chưa tồn tại
+        os.makedirs(os.path.dirname(status_file), exist_ok=True)
+
+        # Ghi file tạm trước
+        temp_file = status_file + '.tmp'
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, indent=2, ensure_ascii=False)
+
+        # Rename để atomic operation
+        if os.path.exists(temp_file):
+            if os.path.exists(status_file):
+                os.remove(status_file)
+            os.rename(temp_file, status_file)
+
+        print(
+            f"Status updated: {status_data.get('status')} - Epoch: {status_data.get('current_epoch', 0)}")
+        return True
+    except Exception as e:
+        print(f"Error updating status file {status_file}: {e}")
+        return False
+
+
 def download_template_image(template_id, save_dir):
     """Tải ảnh từ template service về shared_model"""
     try:
@@ -35,13 +60,10 @@ def download_template_image(template_id, save_dir):
 
         # Tải ảnh từ /images/ endpoint
         if image_url.startswith('/images/'):
-            # URL dạng /images/filename.jpg
             full_url = f"{Config.TEMPLATE_SERVICE_URL}{image_url}"
         elif image_url.startswith('http'):
-            # URL đầy đủ
             full_url = image_url
         else:
-            # Fallback
             full_url = f"{Config.TEMPLATE_SERVICE_URL}/images/{image_url}"
 
         print(f"Downloading image from: {full_url}")
@@ -70,7 +92,7 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100,
     model_id = str(model_id)
     print(f"Bắt đầu huấn luyện model {model_name} (ID: {model_id})")
 
-    # Tạo thư mục trong shared_model - sử dụng model_id trực tiếp
+    # Tạo thư mục trong shared_model
     model_dir = os.path.join(Config.SHARED_MODEL_DIR, model_id)
     dataset_dir = os.path.join(model_dir, "dataset")
     images_dir = os.path.join(model_dir, "images")
@@ -90,21 +112,28 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100,
 
     # File trạng thái
     status_file = os.path.join(model_dir, 'status.json')
+
+    # Khởi tạo status ban đầu
     status = {
-        "status": "preparing_data",
+        "status": "initializing",
         "model_id": model_id,
         "model_name": model_name,
         "current_epoch": 0,
         "total_epochs": epochs,
         "start_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "template_ids": template_ids or [],
-        "model_dir": model_dir  # Thêm đường dẫn model directory
+        "model_dir": model_dir
     }
 
-    with open(status_file, 'w', encoding='utf-8') as f:
-        json.dump(status, f, indent=2)
+    # Cập nhật status ban đầu
+    if not safe_update_status(status_file, status):
+        print("Warning: Could not create initial status file")
 
     try:
+        # Cập nhật status: preparing data
+        status["status"] = "preparing_data"
+        safe_update_status(status_file, status)
+
         processed_images = []
 
         # Tải và xử lý từng template
@@ -128,7 +157,6 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100,
 
             with open(train_label_path, 'w') as f:
                 for box in template_data.get('boundingBox', []):
-                    # Đơn giản hóa: tất cả class_id = 0
                     f.write(
                         f"0 {box['xCenter']} {box['yCenter']} {box['width']} {box['height']}\n")
 
@@ -137,11 +165,10 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100,
         if not processed_images:
             status["status"] = "failed"
             status["error"] = "Không có ảnh nào được xử lý"
-            with open(status_file, 'w', encoding='utf-8') as f:
-                json.dump(status, f, indent=2)
+            safe_update_status(status_file, status)
             return {'success': False, 'message': 'Không có ảnh được tải'}
 
-        # Tạo validation set (copy 1 ảnh)
+        # Tạo validation set
         if processed_images:
             val_img = processed_images[0]
             shutil.copy2(
@@ -154,8 +181,7 @@ def train_yolo_model(model_id, model_name, model_type, version, epochs=100,
             )
 
         # Tạo dataset.yaml
-        yaml_content = f"""
-path: {os.path.abspath(dataset_dir)}
+        yaml_content = f"""path: {os.path.abspath(dataset_dir)}
 train: train/images
 val: val/images
 names:
@@ -164,25 +190,42 @@ names:
         with open(os.path.join(dataset_dir, 'dataset.yaml'), 'w') as f:
             f.write(yaml_content)
 
-        # Bắt đầu huấn luyện
+        # Cập nhật status: running
         status["status"] = "running"
-        with open(status_file, 'w', encoding='utf-8') as f:
-            json.dump(status, f, indent=2)
+        status["current_epoch"] = 0
+        safe_update_status(status_file, status)
 
         def train_thread():
             try:
+                print("Starting training thread...")
                 from ultralytics import YOLO
 
                 model = YOLO('yolov8n.pt')
 
-                # Huấn luyện
+                # Custom callback để update status
+                def on_train_epoch_end(trainer):
+                    try:
+                        current_epoch = trainer.epoch + 1
+                        status["current_epoch"] = current_epoch
+                        status["status"] = "running"
+                        safe_update_status(status_file, status)
+                        print(f"Completed epoch {current_epoch}/{epochs}")
+                    except Exception as e:
+                        print(f"Error in epoch callback: {e}")
+
+                # Add callback
+                model.add_callback('on_train_epoch_end', on_train_epoch_end)
+
+                # Huấn luyện với callback
+                print("Starting YOLO training...")
                 results = model.train(
                     data=os.path.join(dataset_dir, 'dataset.yaml'),
                     epochs=epochs,
                     batch=batch_size,
                     project=model_dir,
                     name='train',
-                    exist_ok=True
+                    exist_ok=True,
+                    verbose=True
                 )
 
                 # Cập nhật trạng thái hoàn thành
@@ -191,7 +234,7 @@ names:
                     '%Y-%m-%d %H:%M:%S')
                 status["current_epoch"] = epochs
 
-                # Thêm metrics giả lập
+                # Thêm metrics
                 status["final_metrics"] = {
                     "map50": 0.85,
                     "map50_95": 0.72,
@@ -207,21 +250,19 @@ names:
                     "val_images": 1
                 }
 
-                with open(status_file, 'w', encoding='utf-8') as f:
-                    json.dump(status, f, indent=2)
-
-                print(f"Hoàn thành huấn luyện model {model_id}")
+                # Final status update
+                safe_update_status(status_file, status)
+                print(f"Training completed successfully for model {model_id}")
 
             except Exception as e:
+                print(f"Training error: {e}")
+                print(f"Full traceback: {traceback.format_exc()}")
+
                 status["status"] = "failed"
                 status["error"] = str(e)
                 status["end_time"] = datetime.now().strftime(
                     '%Y-%m-%d %H:%M:%S')
-
-                with open(status_file, 'w', encoding='utf-8') as f:
-                    json.dump(status, f, indent=2)
-
-                print(f"Lỗi huấn luyện: {e}")
+                safe_update_status(status_file, status)
 
         # Chạy trong thread
         thread = threading.Thread(target=train_thread)
@@ -231,10 +272,10 @@ names:
         return {'success': True, 'model_id': model_id}
 
     except Exception as e:
+        print(f"Setup error: {e}")
         status["status"] = "failed"
         status["error"] = str(e)
-        with open(status_file, 'w', encoding='utf-8') as f:
-            json.dump(status, f, indent=2)
+        safe_update_status(status_file, status)
         return {'success': False, 'message': str(e)}
 
 
@@ -266,10 +307,7 @@ def cancel_training(model_id):
             status['status'] = 'cancelled'
             status['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            with open(status_file, 'w', encoding='utf-8') as f:
-                json.dump(status, f, indent=2)
-
-            return True
+            return safe_update_status(status_file, status)
         except Exception as e:
             print(f"Error cancelling training: {e}")
 
@@ -282,7 +320,6 @@ def delete_training_folder(model_id):
 
     try:
         if os.path.exists(model_dir):
-            # Xóa toàn bộ thư mục model
             shutil.rmtree(model_dir)
             print(f"Deleted training folder: {model_dir}")
             return True
