@@ -1,0 +1,115 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # Template Service Database
+  template-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: template_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - template_db_data:/var/lib/mysql
+      - ./template_schema.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Model Service Database  
+  model-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: model_db
+    ports:
+      - "3308:3306"
+    volumes:
+      - model_db_data:/var/lib/mysql
+      - ./model_schema.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Template Service
+  template-service:
+    build:
+      context: ./template-service
+    ports:
+      - "8003:8003"
+    environment:
+      - TEMPLATE_DB_HOST=template-db
+      - TEMPLATE_DB_PORT=3306
+      - TEMPLATE_DB_NAME=template_db
+      - TEMPLATE_DB_USER=root
+      - TEMPLATE_DB_PASSWORD=root
+    depends_on:
+      - template-db
+    volumes:
+      - ./shared_model:/app/shared_model
+
+  # Model Service
+  model-service:
+    build:
+      context: ./model-service  
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_DB_HOST=model-db
+      - MODEL_DB_PORT=3306
+      - MODEL_DB_NAME=model_db
+      - MODEL_DB_USER=root
+      - MODEL_DB_PASSWORD=root
+      - TEMPLATE_SERVICE_URL=http://template-service:8003
+    depends_on:
+      - model-db
+    volumes:
+      - ./shared_model:/app/shared_model
+
+  # Train Service
+  train-service:
+    build:
+      context: ./train-service
+    ports:
+      - "8002:8002"
+    environment:
+      - TEMPLATE_SERVICE_URL=http://template-service:8003
+      - MODEL_SERVICE_URL=http://model-service:8001
+    volumes:
+      - ./shared_model:/app/shared_model
+
+volumes:
+  template_db_data:
+  model_db_data:
+
+---
+# start_services.sh
+#!/bin/bash
+
+echo "Starting all services..."
+
+# Start Template Service
+echo "Starting Template Service..."
+cd template-service
+python template_service.py &
+TEMPLATE_PID=$!
+
+# Start Model Service  
+echo "Starting Model Service..."
+cd ../model-service
+python model_service.py &
+MODEL_PID=$!
+
+# Start Train Service
+echo "Starting Train Service..."
+cd ../train-service
+python train_service.py &
+TRAIN_PID=$!
+
+echo "All services started!"
+echo "Template Service PID: $TEMPLATE_PID"
+echo "Model Service PID: $MODEL_PID" 
+echo "Train Service PID: $TRAIN_PID"
+
+echo "Services running on:"
+echo "- Template Service: http://localhost:8003"
+echo "- Model Service: http://localhost:8001"
+echo "- Train Service: http://localhost:8002"
+
+# Wait for all services
+wait

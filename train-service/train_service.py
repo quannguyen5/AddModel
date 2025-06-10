@@ -4,13 +4,13 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 import threading
+import requests
 
-# Import existing training functions
 from train_model import train_yolo_model, get_training_status, cancel_training
+from config import Config
 
-app = FastAPI(title="Train Model Service", version="1.0.0")
+app = FastAPI(title="Train Service", version="1.0.0")
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,8 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Pydantic models
 
 
 class TrainRequest(BaseModel):
@@ -48,9 +46,6 @@ class StatusResponse(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     error: Optional[str] = None
-    final_metrics: Optional[dict] = None
-    dataset_info: Optional[dict] = None
-    model_path: Optional[str] = None
 
 
 def run_training_async(model_id, model_name, model_type, version, template_ids,
@@ -63,35 +58,53 @@ def run_training_async(model_id, model_name, model_type, version, template_ids,
         )
         print(f"Training completed for model {model_id}: {result}")
     except Exception as e:
-        print(f"Training failed for model {model_id}: {str(e)}")
+        print(f"Training failed for model {model_id}: {e}")
 
 
 @app.get("/")
 async def root():
-    return {"message": "Train Model Service is running"}
+    return {"message": "Train Service is running"}
 
 
 @app.post("/train", response_model=TrainResponse)
 async def start_training(train_request: TrainRequest):
-    """Bắt đầu quá trình training model"""
     try:
         if not train_request.model_name or not train_request.template_ids:
             raise HTTPException(
                 status_code=400, detail="Missing required information")
 
-        # Generate model ID (simple increment - in production use UUID or better strategy)
+        # Generate model ID
         model_id = hash(
             f"{train_request.model_name}_{train_request.version}") % 10000 + 1000
 
-        # Start training in background thread
+        # Gửi yêu cầu tạo model đến model service
+        model_data = {
+            "model_name": train_request.model_name,
+            "model_type": train_request.model_type,
+            "version": train_request.version,
+            "description": f"Model được tạo từ train service",
+            "template_ids": train_request.template_ids,
+            "epochs": train_request.epochs,
+            "batch_size": train_request.batch_size,
+            "learning_rate": train_request.learning_rate,
+            "accuracy": 0.0  # Sẽ cập nhật sau khi train xong
+        }
+
+        try:
+            response = requests.post(f"{Config.MODEL_SERVICE_URL}/models",
+                                     json=model_data, timeout=30)
+            if response.status_code == 200:
+                print(f"Model {model_id} created in model service")
+        except Exception as e:
+            print(f"Warning: Could not create model in model service: {e}")
+
+        # Start training
         training_thread = threading.Thread(
             target=run_training_async,
-            args=(
-                model_id, train_request.model_name, train_request.model_type,
-                train_request.version, train_request.template_ids,
-                train_request.epochs, train_request.batch_size,
-                train_request.image_size, train_request.learning_rate
-            )
+            args=(model_id, train_request.model_name, train_request.model_type,
+                  train_request.version, train_request.template_ids,
+                  train_request.epochs, train_request.batch_size,
+                  train_request.image_size, train_request.learning_rate)
         )
         training_thread.daemon = True
         training_thread.start()
@@ -108,7 +121,6 @@ async def start_training(train_request: TrainRequest):
 
 @app.get("/status/{model_id}", response_model=StatusResponse)
 async def get_training_status_api(model_id: str):
-    """Lấy trạng thái training hiện tại"""
     try:
         status = get_training_status(model_id)
 
@@ -120,10 +132,7 @@ async def get_training_status_api(model_id: str):
             total_epochs=status.get('total_epochs', 0),
             start_time=status.get('start_time'),
             end_time=status.get('end_time'),
-            error=status.get('error'),
-            final_metrics=status.get('final_metrics'),
-            dataset_info=status.get('dataset_info'),
-            model_path=status.get('model_path')
+            error=status.get('error')
         )
 
     except Exception as e:
@@ -132,12 +141,11 @@ async def get_training_status_api(model_id: str):
 
 @app.post("/cancel/{model_id}")
 async def cancel_training_api(model_id: str):
-    """Hủy quá trình training"""
     try:
         success = cancel_training(model_id)
 
         if success:
-            return {"success": True, "message": "Training cancelled successfully"}
+            return {"success": True, "message": "Training cancelled"}
         else:
             return {"success": False, "message": "Could not cancel training"}
 
