@@ -6,7 +6,8 @@ import uvicorn
 import threading
 import requests
 
-from train_model import train_yolo_model, get_training_status, cancel_training
+from train_model import (train_yolo_model, get_training_status, cancel_training,
+                         delete_training_folder, cleanup_failed_training)
 from config import Config
 
 app = FastAPI(title="Train Service", version="1.0.0")
@@ -46,6 +47,11 @@ class StatusResponse(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     error: Optional[str] = None
+
+
+class DeleteResponse(BaseModel):
+    success: bool
+    message: str
 
 
 def run_training_async(model_id, model_name, model_type, version, template_ids,
@@ -152,6 +158,43 @@ async def cancel_training_api(model_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.delete("/delete-training/{model_id}", response_model=DeleteResponse)
+async def delete_training_folder_api(model_id: str):
+    """Xóa folder training của model"""
+    try:
+        success = delete_training_folder(model_id)
+
+        if success:
+            return DeleteResponse(
+                success=True,
+                message=f"Training folder for model {model_id} deleted successfully"
+            )
+        else:
+            return DeleteResponse(
+                success=False,
+                message=f"Training folder for model {model_id} not found or could not be deleted"
+            )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error deleting training folder: {str(e)}")
+
+
+@app.post("/cleanup/{model_id}")
+async def cleanup_failed_training_api(model_id: str):
+    """Dọn dẹp training thất bại hoặc bị hủy"""
+    try:
+        success = cleanup_failed_training(model_id)
+
+        if success:
+            return {"success": True, "message": f"Cleaned up failed training for model {model_id}"}
+        else:
+            return {"success": False, "message": f"No cleanup needed for model {model_id}"}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error cleaning up training: {str(e)}")
 
 @app.get("/health")
 async def health_check():

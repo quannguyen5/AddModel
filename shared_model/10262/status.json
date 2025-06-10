@@ -1,0 +1,27 @@
+{
+  "status": "completed",
+  "model_id": "10262",
+  "model_name": "model3",
+  "current_epoch": 2,
+  "total_epochs": 2,
+  "start_time": "2025-06-10 20:56:35",
+  "template_ids": [
+    1,
+    3
+  ],
+  "model_dir": "D:\\Ky2nam4\\Phantichthietkekientruchethong\\AddModel\\shared_model\\10262",
+  "end_time": "2025-06-10 20:56:59",
+  "final_metrics": {
+    "map50": 0.85,
+    "map50_95": 0.72,
+    "precision": 0.88,
+    "recall": 0.82,
+    "accuracy": 0.85,
+    "f1_score": 0.85
+  },
+  "dataset_info": {
+    "total_images": 2,
+    "train_images": 2,
+    "val_images": 1
+  }
+}

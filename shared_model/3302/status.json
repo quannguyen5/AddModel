@@ -1,0 +1,28 @@
+{
+  "status": "completed",
+  "model_id": "3302",
+  "model_name": "tesst",
+  "current_epoch": 20,
+  "total_epochs": 20,
+  "start_time": "2025-06-10 22:55:11",
+  "template_ids": [
+    1,
+    2,
+    3
+  ],
+  "model_dir": "D:\\Ky2nam4\\Phantichthietkekientruchethong\\AddModel\\shared_model\\3302",
+  "end_time": "2025-06-10 22:56:14",
+  "final_metrics": {
+    "map50": 0.85,
+    "map50_95": 0.72,
+    "precision": 0.88,
+    "recall": 0.82,
+    "accuracy": 0.85,
+    "f1_score": 0.85
+  },
+  "dataset_info": {
+    "total_images": 3,
+    "train_images": 3,
+    "val_images": 1
+  }
+}

@@ -1,0 +1,6 @@
+
+path: D:\Ky2nam4\Phantichthietkekientruchethong\AddModel\shared_model\3302\dataset
+train: train/images
+val: val/images
+names:
+  0: object

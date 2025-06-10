@@ -23,7 +23,7 @@ public class ApiClient {
     public ApiClient(String modelServiceUrl, String trainServiceUrl) {
         this.modelServiceUrl = modelServiceUrl;
         this.trainServiceUrl = trainServiceUrl;
-        this.templateServiceUrl = "http://localhost:8003"; // Template service URL
+        this.templateServiceUrl = "http://localhost:8003";
         this.gson = new Gson();
     }
     
@@ -54,11 +54,7 @@ public class ApiClient {
             throw new Exception((String) result.get("message"));
         }
         
-        return (String) result.get("message");
-    }
-    
-    public void deleteModel(int modelId) throws Exception {
-        sendDeleteRequest(modelServiceUrl + "/models/" + modelId);
+        return "Model created successfully!";
     }
     
     public TrainResponse startTraining(TrainRequest request) throws Exception {
@@ -82,31 +78,19 @@ public class ApiClient {
         }
         
         try {
-            System.out.println("Loading image from URL: " + imageUrl);
-            
-            // If it's already a full HTTP URL, use it directly
-            if (imageUrl.startsWith("http")) {
-                return loadImageWithTimeout(imageUrl);
-            }
-            
-            // If it's a local path, convert to template service URL
             String filename = extractFilename(imageUrl);
             String encodedFilename = URLEncoder.encode(filename, "UTF-8");
             String templateImageUrl = templateServiceUrl + "/images/" + encodedFilename;
-            
-            System.out.println("Converted to template URL: " + templateImageUrl);
             return loadImageWithTimeout(templateImageUrl);
             
         } catch (Exception e) {
-            System.err.println("Failed to load image from: " + imageUrl + " - " + e.getMessage());
+            System.err.println(e.getMessage());
             return null;
         }
     }
     
     private ImageIcon loadImageWithTimeout(String urlString) {
         try {
-            System.out.println("Attempting to load image from: " + urlString);
-            
             URL url = new URL(urlString);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             
@@ -119,7 +103,6 @@ public class ApiClient {
             connection.setInstanceFollowRedirects(true);
             
             int responseCode = connection.getResponseCode();
-            System.out.println("HTTP Response Code: " + responseCode + " for " + urlString);
             
             if (responseCode == 200) {
                 byte[] imageData = connection.getInputStream().readAllBytes();
@@ -148,38 +131,6 @@ public class ApiClient {
         } catch (Exception e) {
             System.err.println("Exception loading image from " + urlString + ": " + e.getMessage());
             return null;
-        }
-    }
-    
-    public boolean testTemplateServiceConnection() {
-        try {
-            String response = sendGetRequest(templateServiceUrl + "/health");
-            System.out.println("Template service health check: " + response);
-            return true;
-        } catch (Exception e) {
-            System.err.println("Template service connection failed: " + e.getMessage());
-            return false;
-        }
-    }
-    
-    public boolean testImageEndpoint(String filename) {
-        try {
-            String encodedFilename = URLEncoder.encode(filename, "UTF-8");
-            String testUrl = templateServiceUrl + "/images/" + encodedFilename;
-            
-            URL url = new URL(testUrl);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("HEAD");
-            connection.setConnectTimeout(5000);
-            
-            int responseCode = connection.getResponseCode();
-            System.out.println("Image endpoint test for " + filename + ": " + responseCode);
-            connection.disconnect();
-            
-            return responseCode == 200;
-        } catch (Exception e) {
-            System.err.println("Image endpoint test failed for " + filename + ": " + e.getMessage());
-            return false;
         }
     }
     
@@ -254,32 +205,10 @@ public class ApiClient {
         
         return response.toString();
     }
-    
-    private void sendDeleteRequest(String urlString) throws Exception {
-        URL url = new URL(urlString);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("DELETE");
-        connection.setRequestProperty("Content-Type", "application/json");
-        
-        int responseCode = connection.getResponseCode();
-        if (responseCode < 200 || responseCode >= 300) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-            
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-            
-            reader.close();
-            throw new Exception("HTTP " + responseCode + ": " + response.toString());
-        }
-        
-        connection.disconnect();
-    }
 }
 
-// Data classes
+
+// casc lop data
 class ModelData {
     private int idModel;
     private String modelName;
@@ -288,28 +217,18 @@ class ModelData {
     private String description;
     private String lastUpdate;
     private double accuracy;
-    
-    // Getters and setters
+
     public int getId() { return idModel; }
-    public void setId(int id) { this.idModel = id; }
-    
+
     public String getModelName() { return modelName; }
-    public void setModelName(String modelName) { this.modelName = modelName; }
-    
+
     public String getModelType() { return modelType; }
-    public void setModelType(String modelType) { this.modelType = modelType; }
-    
+
     public String getVersion() { return version; }
-    public void setVersion(String version) { this.version = version; }
-    
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    
+
     public String getLastUpdate() { return lastUpdate; }
-    public void setLastUpdate(String lastUpdate) { this.lastUpdate = lastUpdate; }
-    
+
     public double getAccuracy() { return accuracy; }
-    public void setAccuracy(double accuracy) { this.accuracy = accuracy; }
 }
 
 class TemplateData {
@@ -317,19 +236,20 @@ class TemplateData {
     private String description;
     private String imageUrl;
     private String timeUpdate;
-    
-    // Getters and setters
+    private List<Map<String, Object>> labels;
+    private List<Map<String, Object>> boundingBox;
+
     public int getIdTemplate() { return idTemplate; }
-    public void setIdTemplate(int idTemplate) { this.idTemplate = idTemplate; }
-    
+
     public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    
+
     public String getImageUrl() { return imageUrl; }
-    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
-    
+
     public String getTimeUpdate() { return timeUpdate; }
-    public void setTimeUpdate(String timeUpdate) { this.timeUpdate = timeUpdate; }
+
+    public List<Map<String, Object>> getLabels() { return labels; }
+
+    public List<Map<String, Object>> getBoundingBox() { return boundingBox; }
 }
 
 class CreateModelRequest {
@@ -342,9 +262,7 @@ class CreateModelRequest {
     private int batch_size;
     private double learning_rate;
     private double accuracy;
-    
-    // Constructors
-    public CreateModelRequest() {}
+
     
     public CreateModelRequest(String modelName, String modelType, String version, 
                             String description, List<Integer> templateIds, 
@@ -359,34 +277,6 @@ class CreateModelRequest {
         this.learning_rate = learningRate;
         this.accuracy = accuracy;
     }
-    
-    // Getters and setters
-    public String getModel_name() { return model_name; }
-    public void setModel_name(String model_name) { this.model_name = model_name; }
-    
-    public String getModel_type() { return model_type; }
-    public void setModel_type(String model_type) { this.model_type = model_type; }
-    
-    public String getVersion() { return version; }
-    public void setVersion(String version) { this.version = version; }
-    
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    
-    public List<Integer> getTemplate_ids() { return template_ids; }
-    public void setTemplate_ids(List<Integer> template_ids) { this.template_ids = template_ids; }
-    
-    public int getEpochs() { return epochs; }
-    public void setEpochs(int epochs) { this.epochs = epochs; }
-    
-    public int getBatch_size() { return batch_size; }
-    public void setBatch_size(int batch_size) { this.batch_size = batch_size; }
-    
-    public double getLearning_rate() { return learning_rate; }
-    public void setLearning_rate(double learning_rate) { this.learning_rate = learning_rate; }
-    
-    public double getAccuracy() { return accuracy; }
-    public void setAccuracy(double accuracy) { this.accuracy = accuracy; }
 }
 
 class TrainRequest {
@@ -398,10 +288,7 @@ class TrainRequest {
     private int batch_size;
     private int image_size;
     private double learning_rate;
-    
-    // Constructors and getters/setters
-    public TrainRequest() {}
-    
+
     public TrainRequest(String modelName, String modelType, String version,
                        List<Integer> templateIds, int epochs, int batchSize,
                        int imageSize, double learningRate) {
@@ -414,39 +301,13 @@ class TrainRequest {
         this.image_size = imageSize;
         this.learning_rate = learningRate;
     }
-    
-    // Getters and setters
-    public String getModel_name() { return model_name; }
-    public void setModel_name(String model_name) { this.model_name = model_name; }
-    
-    public String getModel_type() { return model_type; }
-    public void setModel_type(String model_type) { this.model_type = model_type; }
-    
-    public String getVersion() { return version; }
-    public void setVersion(String version) { this.version = version; }
-    
-    public List<Integer> getTemplate_ids() { return template_ids; }
-    public void setTemplate_ids(List<Integer> template_ids) { this.template_ids = template_ids; }
-    
-    public int getEpochs() { return epochs; }
-    public void setEpochs(int epochs) { this.epochs = epochs; }
-    
-    public int getBatch_size() { return batch_size; }
-    public void setBatch_size(int batch_size) { this.batch_size = batch_size; }
-    
-    public int getImage_size() { return image_size; }
-    public void setImage_size(int image_size) { this.image_size = image_size; }
-    
-    public double getLearning_rate() { return learning_rate; }
-    public void setLearning_rate(double learning_rate) { this.learning_rate = learning_rate; }
 }
 
 class TrainResponse {
     private boolean success;
     private String model_id;
     private String message;
-    
-    // Getters and setters
+
     public boolean isSuccess() { return success; }
     public void setSuccess(boolean success) { this.success = success; }
     

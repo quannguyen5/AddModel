@@ -13,12 +13,12 @@ import java.io.File;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class AddModelDialog extends JDialog {
     private ApiClient apiClient;
     private boolean modelAdded = false;
-    
-    // Form components
+
     private JTextField modelNameField;
     private JComboBox<String> modelTypeCombo;
     private JTextField versionField;
@@ -27,18 +27,14 @@ public class AddModelDialog extends JDialog {
     private JSpinner batchSizeSpinner;
     private JSpinner imageSizeSpinner;
     private JSpinner learningRateSpinner;
-    
-    // Template selection
+
     private JTable templateTable;
     private TemplateTableModel templateTableModel;
     private List<TemplateData> templates;
-    
-    // Buttons
+
     private JButton trainButton;
     private JButton cancelButton;
-    private JButton saveButton;
-    
-    // Training status
+
     private String currentModelId;
     private TrainingProgressDialog trainingDialog;
     
@@ -53,27 +49,22 @@ public class AddModelDialog extends JDialog {
     
     private void initializeUI() {
         setLayout(new BorderLayout());
-        setSize(800, 600);
+        setSize(1200, 600);
         setLocationRelativeTo(getParent());
-        
-        // Create main panel with tabs
+
         JTabbedPane tabbedPane = new JTabbedPane();
-        
-        // Model Info Tab
+
         JPanel modelInfoPanel = createModelInfoPanel();
-        tabbedPane.addTab("Model Information", modelInfoPanel);
-        
-        // Training Parameters Tab
+        tabbedPane.addTab("Thong tin", modelInfoPanel);
+
         JPanel trainingPanel = createTrainingParametersPanel();
-        tabbedPane.addTab("Training Parameters", trainingPanel);
-        
-        // Template Selection Tab
+        tabbedPane.addTab("Thong so train", trainingPanel);
+
         JPanel templatePanel = createTemplateSelectionPanel();
-        tabbedPane.addTab("Training Templates", templatePanel);
+        tabbedPane.addTab("Cac mau huan luyen", templatePanel);
         
         add(tabbedPane, BorderLayout.CENTER);
-        
-        // Button panel
+
         JPanel buttonPanel = createButtonPanel();
         add(buttonPanel, BorderLayout.SOUTH);
     }
@@ -82,8 +73,7 @@ public class AddModelDialog extends JDialog {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         GridBagConstraints gbc = new GridBagConstraints();
-        
-        // Model Name
+
         gbc.gridx = 0; gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.WEST;
         gbc.insets = new Insets(5, 5, 5, 5);
@@ -94,7 +84,6 @@ public class AddModelDialog extends JDialog {
         modelNameField = new JTextField(20);
         panel.add(modelNameField, gbc);
         
-        // Model Type
         gbc.gridx = 0; gbc.gridy = 1;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
@@ -105,7 +94,6 @@ public class AddModelDialog extends JDialog {
         modelTypeCombo = new JComboBox<>();
         panel.add(modelTypeCombo, gbc);
         
-        // Version
         gbc.gridx = 0; gbc.gridy = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
@@ -181,31 +169,28 @@ public class AddModelDialog extends JDialog {
     private JPanel createTemplateSelectionPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        // Info label
-        JLabel infoLabel = new JLabel("Select at least one template for training:");
+
+        JLabel infoLabel = new JLabel("Chon it nhat 1 mau de train");
         panel.add(infoLabel, BorderLayout.NORTH);
-        
-        // Template table with checkbox column
+
         templateTableModel = new TemplateTableModel();
-        templateTableModel.setParentDialog(this); // Set parent reference
+        templateTableModel.setParentDialog(this);
         templateTable = new JTable(templateTableModel);
-        
-        // Enable checkbox selection for first column
+
         templateTable.getColumnModel().getColumn(0).setCellEditor(new CheckboxCellEditor());
         templateTable.getColumnModel().getColumn(0).setCellRenderer(new CheckboxRenderer());
         
-        // Set column widths
+        // Set column widths - thêm cột Labels
         templateTable.getColumnModel().getColumn(0).setPreferredWidth(50);  // Checkbox
         templateTable.getColumnModel().getColumn(1).setPreferredWidth(50);  // ID
         templateTable.getColumnModel().getColumn(2).setPreferredWidth(100); // Image
         templateTable.getColumnModel().getColumn(3).setPreferredWidth(200); // Description
-        templateTable.getColumnModel().getColumn(4).setPreferredWidth(150); // Time
+        templateTable.getColumnModel().getColumn(4).setPreferredWidth(150); // Labels
+        templateTable.getColumnModel().getColumn(5).setPreferredWidth(120); // Time
         
         // Add image renderer for image column
         templateTable.getColumnModel().getColumn(2).setCellRenderer(new ImageRenderer(apiClient));
-        
-        templateTable.setRowHeight(80); // Make rows taller for images
+        templateTable.setRowHeight(80);
         
         JScrollPane scrollPane = new JScrollPane(templateTable);
         panel.add(scrollPane, BorderLayout.CENTER);
@@ -224,18 +209,11 @@ public class AddModelDialog extends JDialog {
         trainButton.addActionListener(this::onTrainClicked);
         trainButton.setEnabled(false);
         
-        saveButton = new JButton("Save Model");
-        saveButton.addActionListener(this::onSaveClicked);
-        saveButton.setEnabled(false);
-        
         panel.add(cancelButton);
         panel.add(trainButton);
-        panel.add(saveButton);
-        
-        // Add listeners to enable/disable train button
+
         modelNameField.getDocument().addDocumentListener(new SimpleDocumentListener(this::updateTrainButtonState));
         versionField.getDocument().addDocumentListener(new SimpleDocumentListener(this::updateTrainButtonState));
-        // Remove the old table selection listener since we're using checkboxes now
         
         return panel;
     }
@@ -244,8 +222,7 @@ public class AddModelDialog extends JDialog {
         boolean hasName = !modelNameField.getText().trim().isEmpty();
         boolean hasVersion = !versionField.getText().trim().isEmpty();
         boolean hasModelType = modelTypeCombo.getSelectedItem() != null;
-        
-        // Check if any templates are selected via checkbox
+
         boolean hasSelectedTemplates = false;
         if (templateTableModel != null) {
             hasSelectedTemplates = templateTableModel.hasSelectedTemplates();
@@ -258,76 +235,56 @@ public class AddModelDialog extends JDialog {
         if (!validateInput()) return;
         
         try {
-            // Create train request
             TrainRequest request = createTrainRequest();
-            
-            // Start training
             TrainResponse response = apiClient.startTraining(request);
             
             if (response.isSuccess()) {
                 currentModelId = response.getModel_id();
-                
-                // Show training progress dialog
-                trainingDialog = new TrainingProgressDialog(this, apiClient, currentModelId);
+                trainingDialog = new TrainingProgressDialog(this, apiClient, currentModelId, this);
                 trainingDialog.setVisible(true);
-                
-                // Check if training completed successfully
-                if (trainingDialog.isTrainingCompleted()) {
-                    saveButton.setEnabled(true);
-                    trainButton.setEnabled(false);
-                    JOptionPane.showMessageDialog(this, "Training completed successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
+                if (trainingDialog.isModelSaved()) {
+                    modelAdded = true;
+                    dispose();
                 }
             } else {
-                JOptionPane.showMessageDialog(this, "Failed to start training: " + response.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Loi khi bat dau: " + response.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
             
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error starting training: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Loi khi bat dau: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
     
-    private void onSaveClicked(ActionEvent e) {
-        if (currentModelId == null) {
-            JOptionPane.showMessageDialog(this, "No trained model to save.", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        
-        try {
-            CreateModelRequest request = createModelRequest();
-            String message = apiClient.createModel(request);
-            
-            modelAdded = true;
-            JOptionPane.showMessageDialog(this, message, "Success", JOptionPane.INFORMATION_MESSAGE);
-            dispose();
-            
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error saving model: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+    public void onTrainingCompleted() {
+        CreateModelRequest request = createModelRequest();
+        if (trainingDialog != null) {
+            trainingDialog.setModelRequest(request);
         }
     }
     
     private boolean validateInput() {
         if (modelNameField.getText().trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a model name.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Chua nhap ten", "Loi", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
         if (versionField.getText().trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a version.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Chua nhap version", "Loi", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
         if (modelTypeCombo.getSelectedItem() == null) {
-            JOptionPane.showMessageDialog(this, "Please select a model type.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Chua chon loai mo hinh", "Loi", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
         if (templateTable.getColumnModel().getColumnCount() == 0) {
-            JOptionPane.showMessageDialog(this, "Please select at least one template.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Chon it nhat 1 mau", "Loi", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
         if (!templateTableModel.hasSelectedTemplates()) {
-            JOptionPane.showMessageDialog(this, "Please select at least one template.", "Validation Error", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Chon it nhat 1 mau", "Loi", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         
@@ -361,7 +318,7 @@ public class AddModelDialog extends JDialog {
             (Integer) epochsSpinner.getValue(),
             (Integer) batchSizeSpinner.getValue(),
             (Double) learningRateSpinner.getValue(),
-            0.85 // Default accuracy, will be updated from training results
+            0.85
         );
     }
     
@@ -369,10 +326,6 @@ public class AddModelDialog extends JDialog {
         SwingWorker<List<TemplateData>, Void> worker = new SwingWorker<List<TemplateData>, Void>() {
             @Override
             protected List<TemplateData> doInBackground() throws Exception {
-                // Test connection first
-                if (!apiClient.testTemplateServiceConnection()) {
-                    throw new Exception("Template service is not accessible");
-                }
                 return apiClient.getAllTemplates();
             }
             
@@ -381,21 +334,15 @@ public class AddModelDialog extends JDialog {
                 try {
                     templates = get();
                     templateTableModel.setTemplates(templates);
-                    
-                    // Test image loading for first template
+
                     if (templates != null && !templates.isEmpty()) {
                         String firstImageUrl = templates.get(0).getImageUrl();
                         if (firstImageUrl != null) {
                             String filename = apiClient.extractFilename(firstImageUrl);
-                            boolean imageAccessible = apiClient.testImageEndpoint(filename);
-                            System.out.println("First image accessibility test: " + imageAccessible);
                         }
                     }
                     
                 } catch (Exception e) {
-                    JOptionPane.showMessageDialog(AddModelDialog.this, 
-                        "Error loading templates: " + e.getMessage(), 
-                        "Error", JOptionPane.ERROR_MESSAGE);
                     e.printStackTrace();
                 }
             }
@@ -430,7 +377,7 @@ public class AddModelDialog extends JDialog {
     }
 }
 
-// Custom checkbox cell editor
+
 class CheckboxCellEditor extends AbstractCellEditor implements TableCellEditor {
     private JCheckBox checkBox;
     
@@ -452,7 +399,7 @@ class CheckboxCellEditor extends AbstractCellEditor implements TableCellEditor {
     }
 }
 
-// Checkbox renderer
+
 class CheckboxRenderer extends JCheckBox implements TableCellRenderer {
     public CheckboxRenderer() {
         setHorizontalAlignment(JLabel.CENTER);
@@ -475,7 +422,6 @@ class CheckboxRenderer extends JCheckBox implements TableCellRenderer {
     }
 }
 
-// Image renderer
 class ImageRenderer extends JLabel implements TableCellRenderer {
     private ApiClient apiClient;
     
@@ -499,59 +445,42 @@ class ImageRenderer extends JLabel implements TableCellRenderer {
         
         if (value != null) {
             String imageUrl = value.toString();
-            System.out.println("ImageRenderer processing URL: " + imageUrl);
             
             try {
-                // Try to load image from URL
                 ImageIcon icon = loadImageIcon(imageUrl);
                 if (icon != null) {
-                    // Scale image to fit cell
                     Image img = icon.getImage().getScaledInstance(60, 60, Image.SCALE_SMOOTH);
                     setIcon(new ImageIcon(img));
                     setText("");
-                    System.out.println("Image rendered successfully for: " + imageUrl);
                 } else {
                     setIcon(createPlaceholderIcon());
-                    setText("No Image");
-                    System.out.println("Failed to load image, using placeholder for: " + imageUrl);
                 }
             } catch (Exception e) {
                 setIcon(createPlaceholderIcon());
-                setText("Error");
                 System.err.println("Error in ImageRenderer for " + imageUrl + ": " + e.getMessage());
             }
         } else {
             setIcon(createPlaceholderIcon());
-            setText("No Image");
         }
-        
         return this;
     }
     
     private ImageIcon loadImageIcon(String imageUrl) {
         try {
-            System.out.println("ImageRenderer loading: " + imageUrl);
-            
-            // Use the provided ApiClient to load image from template service
             ImageIcon icon = apiClient.loadImageFromUrl(imageUrl);
             if (icon != null) {
-                System.out.println("Successfully loaded image via ApiClient");
                 return icon;
             } else {
                 System.out.println("ApiClient returned null for image");
             }
         } catch (Exception e) {
-            System.err.println("Error loading image from URL: " + e.getMessage());
             e.printStackTrace();
         }
-        
-        // Fallback to placeholder
-        System.out.println("Using placeholder for: " + imageUrl);
+
         return createPlaceholderIcon();
     }
     
     private ImageIcon createPlaceholderIcon() {
-        // Create a simple colored rectangle as placeholder
         BufferedImage img = new BufferedImage(60, 60, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = img.createGraphics();
         g2d.setColor(Color.LIGHT_GRAY);
@@ -565,7 +494,6 @@ class ImageRenderer extends JLabel implements TableCellRenderer {
     }
 }
 
-// Helper class for document listener
 class SimpleDocumentListener implements javax.swing.event.DocumentListener {
     private final Runnable callback;
     
@@ -583,9 +511,8 @@ class SimpleDocumentListener implements javax.swing.event.DocumentListener {
     public void changedUpdate(javax.swing.event.DocumentEvent e) { callback.run(); }
 }
 
-// Template table model
 class TemplateTableModel extends AbstractTableModel {
-    private final String[] columnNames = {"Select", "ID", "Image", "Description", "Time Update"};
+    private final String[] columnNames = {"Select", "ID", "Image", "Description", "Labels", "Time Update"};
     private List<TemplateData> templates = new ArrayList<>();
     private List<Boolean> selectedRows = new ArrayList<>();
     
@@ -637,9 +564,29 @@ class TemplateTableModel extends AbstractTableModel {
             case 1: return template.getIdTemplate();
             case 2: return template.getImageUrl(); // Image URL for renderer
             case 3: return template.getDescription();
-            case 4: return template.getTimeUpdate();
+            case 4: return formatLabels(template.getLabels()); // Labels column
+            case 5: return template.getTimeUpdate();
             default: return null;
         }
+    }
+    
+    private String formatLabels(List<Map<String, Object>> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return "No labels";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < labels.size() && i < 3; i++) { // Show max 3 labels
+            Map<String, Object> label = labels.get(i);
+            if (i > 0) sb.append(", ");
+            sb.append(label.get("typeLabel"));
+        }
+        
+        if (labels.size() > 3) {
+            sb.append(" (+").append(labels.size() - 3).append(" more)");
+        }
+        
+        return sb.toString();
     }
     
     @Override
@@ -647,8 +594,6 @@ class TemplateTableModel extends AbstractTableModel {
         if (columnIndex == 0 && rowIndex < selectedRows.size()) {
             selectedRows.set(rowIndex, (Boolean) value);
             fireTableCellUpdated(rowIndex, columnIndex);
-            
-            // Trigger update of train button state
             SwingUtilities.invokeLater(() -> {
                 if (parentDialog != null) {
                     parentDialog.updateTrainButtonState();
@@ -675,6 +620,6 @@ class TemplateTableModel extends AbstractTableModel {
     
     @Override
     public boolean isCellEditable(int rowIndex, int columnIndex) {
-        return columnIndex == 0; // Only checkbox column is editable
+        return columnIndex == 0;
     }
 }

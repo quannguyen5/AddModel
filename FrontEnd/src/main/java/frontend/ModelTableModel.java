@@ -61,6 +61,6 @@ public class ModelTableModel extends AbstractTableModel {
     
     @Override
     public boolean isCellEditable(int rowIndex, int columnIndex) {
-        return false; // Make table read-only
+        return false;
     }
 }
