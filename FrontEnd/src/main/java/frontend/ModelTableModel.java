@@ -1,5 +1,7 @@
 package frontend;
 
+import frontend.modeldata.ModelData;
+
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,10 +16,6 @@ public class ModelTableModel extends AbstractTableModel {
     public void setModels(List<ModelData> models) {
         this.models = models != null ? models : new ArrayList<>();
         fireTableDataChanged();
-    }
-    
-    public ModelData getModelAt(int rowIndex) {
-        return models.get(rowIndex);
     }
     
     @Override
@@ -54,7 +52,7 @@ public class ModelTableModel extends AbstractTableModel {
     public Class<?> getColumnClass(int columnIndex) {
         switch (columnIndex) {
             case 0: return Integer.class;
-            case 4: return String.class; // Accuracy as formatted string
+            case 4: return String.class;
             default: return String.class;
         }
     }

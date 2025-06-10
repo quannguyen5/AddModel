@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uvicorn
 import threading
 import requests
@@ -34,7 +34,7 @@ class TrainRequest(BaseModel):
 
 class TrainResponse(BaseModel):
     success: bool
-    model_id: Optional[int] = None
+    model_id: Optional[str] = None
     message: str
 
 
@@ -47,6 +47,8 @@ class StatusResponse(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     error: Optional[str] = None
+    final_metrics: Optional[Dict[str, Any]] = None
+    dataset_info: Optional[Dict[str, Any]] = None
 
 
 class DeleteResponse(BaseModel):
@@ -56,20 +58,13 @@ class DeleteResponse(BaseModel):
 
 def run_training_async(model_id, model_name, model_type, version, template_ids,
                        epochs, batch_size, image_size, learning_rate):
-    """Chạy training trong thread riêng"""
     try:
         result = train_yolo_model(
             model_id, model_name, model_type, version,
             epochs, batch_size, image_size, learning_rate, template_ids
         )
-        print(f"Training completed for model {model_id}: {result}")
     except Exception as e:
-        print(f"Training failed for model {model_id}: {e}")
-
-
-@app.get("/")
-async def root():
-    return {"message": "Train Service is running"}
+        print(e)
 
 
 @app.post("/train", response_model=TrainResponse)
@@ -79,14 +74,11 @@ async def start_training(train_request: TrainRequest):
             raise HTTPException(
                 status_code=400, detail="Missing required information")
 
-        # Generate model ID
         model_id = hash(
             f"{train_request.model_name}_{train_request.version}") % 10000 + 1000
 
-        # REMOVED: Không tạo model trong database ở đây nữa
-        # Model chỉ được tạo khi user bấm Save sau khi training hoàn thành
+        model_id = str(model_id)
 
-        # Start training
         training_thread = threading.Thread(
             target=run_training_async,
             args=(model_id, train_request.model_name, train_request.model_type,
@@ -120,7 +112,9 @@ async def get_training_status_api(model_id: str):
             total_epochs=status.get('total_epochs', 0),
             start_time=status.get('start_time'),
             end_time=status.get('end_time'),
-            error=status.get('error')
+            error=status.get('error'),
+            final_metrics=status.get('final_metrics'),
+            dataset_info=status.get('dataset_info')
         )
 
     except Exception as e:
@@ -143,40 +137,38 @@ async def cancel_training_api(model_id: str):
 
 @app.delete("/delete-training/{model_id}", response_model=DeleteResponse)
 async def delete_training_folder_api(model_id: str):
-    """Xóa folder training của model"""
     try:
         success = delete_training_folder(model_id)
 
         if success:
             return DeleteResponse(
                 success=True,
-                message=f"Training folder for model {model_id} deleted successfully"
+                message=f"Training folder deleted successfully"
             )
         else:
             return DeleteResponse(
                 success=False,
-                message=f"Training folder for model {model_id} not found or could not be deleted"
+                message=f"Training folder not found"
             )
 
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error deleting training folder: {str(e)}")
+            status_code=500, detail=str(e))
 
 
 @app.post("/cleanup/{model_id}")
 async def cleanup_failed_training_api(model_id: str):
-    """Dọn dẹp training thất bại hoặc bị hủy"""
     try:
         success = cleanup_failed_training(model_id)
 
         if success:
-            return {"success": True, "message": f"Cleaned up failed training for model {model_id}"}
+            return {"success": True, "message": f"Cleaned up failed training"}
         else:
-            return {"success": False, "message": f"No cleanup needed for model {model_id}"}
+            return {"success": False, "message": f"No cleanup"}
 
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error cleaning up training: {str(e)}")
+            status_code=500, detail=str(e))
 
 
 @app.get("/health")

@@ -23,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DAOs
 model_dao = ModelDAO()
 training_data_dao = TrainingDataDAO()
 
@@ -73,21 +72,9 @@ async def get_all_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/models/{model_id}")
-async def get_model(model_id: int):
-    try:
-        model = model_dao.get_by_id(model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail="Model not found")
-        return model.to_dict()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/models")
 async def create_model(model_request: ModelCreateRequest):
     try:
-        # Check if model with same name and version already exists
         existing_model = model_dao.get_by_name_and_version(
             model_request.model_name,
             model_request.version
@@ -96,7 +83,7 @@ async def create_model(model_request: ModelCreateRequest):
         if existing_model:
             raise HTTPException(
                 status_code=400,
-                detail=f"Model with name '{model_request.model_name}' and version '{model_request.version}' already exists. Please use a different name or version."
+                detail=f"Model with name '{model_request.model_name}' and version '{model_request.version}'"
             )
 
         # Tạo train info
@@ -131,10 +118,8 @@ async def create_model(model_request: ModelCreateRequest):
         return {"success": True, "model_id": model_id, "message": "Model created successfully"}
 
     except HTTPException:
-        # Re-raise HTTP exceptions (like duplicate error)
         raise
     except Exception as e:
-        # Handle database errors
         error_message = str(e)
         if "Duplicate entry" in error_message and "UNIQUE_MODEL_NAME_VERSION" in error_message:
             raise HTTPException(
@@ -146,40 +131,14 @@ async def create_model(model_request: ModelCreateRequest):
                 status_code=500, detail=f"Database error: {error_message}")
 
 
-@app.delete("/models/{model_id}")
-async def delete_model(model_id: int):
-    try:
-        success = model_dao.delete(model_id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Model not found")
-        return {"success": True, "message": "Model deleted"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/check-model-exists/{model_name}/{version}")
 async def check_model_exists(model_name: str, version: str):
-    """Check if model with given name and version exists"""
     try:
         existing_model = model_dao.get_by_name_and_version(model_name, version)
         return {
             "exists": existing_model is not None,
             "model_id": existing_model.idModel if existing_model else None
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/templates", response_model=List[TemplateResponse])
-async def get_all_templates():
-    try:
-        # Lấy templates từ template service
-        response = requests.get(
-            f"{Config.TEMPLATE_SERVICE_URL}/templates", timeout=30)
-        response.raise_for_status()
-        templates_data = response.json()
-
-        return [TemplateResponse(**template) for template in templates_data]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

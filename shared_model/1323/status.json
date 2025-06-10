@@ -1,0 +1,14 @@
+{
+  "status": "cancelled",
+  "model_id": "1323",
+  "model_name": "tttt",
+  "current_epoch": 51,
+  "total_epochs": 100,
+  "start_time": "2025-06-10 23:57:10",
+  "template_ids": [
+    1,
+    2
+  ],
+  "model_dir": "D:\\Ky2nam4\\Phantichthietkekientruchethong\\AddModel\\shared_model\\1323",
+  "end_time": "2025-06-10 23:59:25"
+}

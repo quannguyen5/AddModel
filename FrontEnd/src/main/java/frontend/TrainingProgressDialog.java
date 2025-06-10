@@ -1,5 +1,7 @@
 package frontend;
 
+import frontend.modeldata.*;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -9,7 +11,6 @@ import java.util.Map;
 public class TrainingProgressDialog extends JDialog {
     private ApiClient apiClient;
     private String modelId;
-    private boolean trainingCompleted = false;
     private boolean modelSaved = false;
     private AddModelDialog parentDialog;
     private CreateModelRequest modelRequest;
@@ -22,7 +23,6 @@ public class TrainingProgressDialog extends JDialog {
     private JButton discardButton;
     private JButton closeButton;
 
-    private JPanel metricsPanel;
     private JLabel map50Label;
     private JLabel map50_95Label;
     private JLabel precisionLabel;
@@ -53,27 +53,21 @@ public class TrainingProgressDialog extends JDialog {
         setLocationRelativeTo(getParent());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
 
-        // Main content panel
         JPanel contentPanel = new JPanel(new BorderLayout());
 
-        // Status panel
         JPanel statusPanel = createStatusPanel();
         contentPanel.add(statusPanel, BorderLayout.NORTH);
 
-        // Tabbed pane for metrics and logs
         JTabbedPane tabbedPane = new JTabbedPane();
 
-        // Metrics tab
         JPanel metricsTabPanel = createMetricsPanel();
         tabbedPane.addTab("Metrics", metricsTabPanel);
 
-        // Log tab
         JPanel logPanel = createLogPanel();
         tabbedPane.addTab("Progress Log", logPanel);
 
         contentPanel.add(tabbedPane, BorderLayout.CENTER);
 
-        // Button panel
         JPanel buttonPanel = createButtonPanel();
         contentPanel.add(buttonPanel, BorderLayout.SOUTH);
 
@@ -84,12 +78,10 @@ public class TrainingProgressDialog extends JDialog {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 10, 20));
 
-        // Status label
-        statusLabel = new JLabel("Initializing training...");
+        statusLabel = new JLabel("Init training...");
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 14f));
         panel.add(statusLabel, BorderLayout.NORTH);
 
-        // Progress bar
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
         progressBar.setString("0%");
@@ -102,7 +94,6 @@ public class TrainingProgressDialog extends JDialog {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Model metrics
         JPanel modelMetricsPanel = new JPanel(new GridBagLayout());
         modelMetricsPanel.setBorder(BorderFactory.createTitledBorder("Model Performance"));
         GridBagConstraints gbc = new GridBagConstraints();
@@ -275,9 +266,17 @@ public class TrainingProgressDialog extends JDialog {
             protected void done() {
                 try {
                     TrainingStatus status = get();
+
+                    appendLog("=== STATUS DEBUG ===");
+                    appendLog("Status: " + status.getStatus());
+                    appendLog("Current Epoch: " + status.getCurrent_epoch());
+                    appendLog("Total Epochs: " + status.getTotal_epochs());
+                    appendLog("Final Metrics: " + (status.getFinal_metrics() != null ? status.getFinal_metrics().toString() : "null"));
+                    appendLog("Dataset Info: " + (status.getDataset_info() != null ? status.getDataset_info().toString() : "null"));
+                    appendLog("==================");
+
                     updateUI(status);
 
-                    // Check if training is finished
                     String currentStatus = status.getStatus();
                     if ("completed".equals(currentStatus) || "failed".equals(currentStatus) || "cancelled".equals(currentStatus)) {
                         statusUpdateTimer.stop();
@@ -285,7 +284,8 @@ public class TrainingProgressDialog extends JDialog {
                     }
 
                 } catch (Exception e) {
-                    appendLog("Error getting training status: " + e.getMessage());
+                    appendLog("Error training status: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         };
@@ -293,25 +293,20 @@ public class TrainingProgressDialog extends JDialog {
     }
 
     private void updateUI(TrainingStatus status) {
-        // Update status label
         String statusText = getStatusText(status);
         statusLabel.setText(statusText);
 
-        // Update progress bar
         if (status.getTotal_epochs() > 0) {
             int progress = (int) ((double) status.getCurrent_epoch() / status.getTotal_epochs() * 100);
             progressBar.setValue(progress);
             progressBar.setString(progress + "%");
         }
 
-        // Append to log
         appendLog(String.format("[%s] %s",
                 java.time.LocalTime.now().toString(), statusText));
 
-        // Update metrics if available
         updateMetrics(status);
 
-        // Update dataset info if available
         updateDatasetInfo(status);
     }
 
@@ -341,20 +336,57 @@ public class TrainingProgressDialog extends JDialog {
 
     private void updateMetrics(TrainingStatus status) {
         Map<String, Object> metrics = status.getFinal_metrics();
+
         if (metrics != null) {
-            updateMetricLabel(map50Label, metrics.get("map50"));
-            updateMetricLabel(map50_95Label, metrics.get("map50_95"));
-            updateMetricLabel(precisionLabel, metrics.get("precision"));
-            updateMetricLabel(recallLabel, metrics.get("recall"));
-            updateMetricLabel(accuracyLabel, metrics.get("accuracy"));
-            updateMetricLabel(f1ScoreLabel, metrics.get("f1_score"));
+            appendLog("Found metrics, updating display...");
+
+            if (metrics.containsKey("map50")) {
+                updateMetricLabel(map50Label, metrics.get("map50"));
+            }
+            if (metrics.containsKey("map50_95")) {
+                updateMetricLabel(map50_95Label, metrics.get("map50_95"));
+            }
+            if (metrics.containsKey("precision")) {
+                updateMetricLabel(precisionLabel, metrics.get("precision"));
+            }
+            if (metrics.containsKey("recall")) {
+                updateMetricLabel(recallLabel, metrics.get("recall"));
+            }
+            if (metrics.containsKey("accuracy")) {
+                updateMetricLabel(accuracyLabel, metrics.get("accuracy"));
+            }
+            if (metrics.containsKey("f1_score")) {
+                updateMetricLabel(f1ScoreLabel, metrics.get("f1_score"));
+            }
+            SwingUtilities.invokeLater(() -> {
+                revalidate();
+                repaint();
+            });
         }
     }
 
     private void updateMetricLabel(JLabel label, Object value) {
         if (value != null) {
-            double val = ((Number) value).doubleValue() * 100;
-            label.setText(String.format("%.2f%%", val));
+            try {
+                double val = 0.0;
+                if (value instanceof Number) {
+                    val = ((Number) value).doubleValue();
+                } else {
+                    val = Double.parseDouble(value.toString());
+                }
+                if (val <= 1.0) {
+                    val = val * 100;
+                }
+
+                final String displayText = String.format("%.2f%%", val);
+                SwingUtilities.invokeLater(() -> {
+                    label.setText(displayText);
+                    label.setForeground(new Color(34, 139, 34)); //xanh la cay
+                });
+
+            } catch (NumberFormatException e) {
+                appendLog("Error parsing metric value: " + value);
+            }
         }
     }
 
@@ -365,8 +397,6 @@ public class TrainingProgressDialog extends JDialog {
             updateDatasetLabel(trainImagesLabel, datasetInfo.get("train_images"));
             updateDatasetLabel(valImagesLabel, datasetInfo.get("val_images"));
         }
-
-        // Calculate duration if we have start and end times
         if (status.getStart_time() != null && status.getEnd_time() != null) {
             durationLabel.setText("Training completed");
         } else if (status.getStart_time() != null) {
@@ -376,7 +406,10 @@ public class TrainingProgressDialog extends JDialog {
 
     private void updateDatasetLabel(JLabel label, Object value) {
         if (value != null) {
-            label.setText(value.toString());
+            SwingUtilities.invokeLater(() -> {
+                label.setText(value.toString());
+                label.setForeground(Color.BLACK);
+            });
         }
     }
 
@@ -407,15 +440,6 @@ public class TrainingProgressDialog extends JDialog {
     }
 
     private void onSaveClicked(ActionEvent e) {
-        if (modelRequest == null) {
-            JOptionPane.showMessageDialog(this,
-                    "No model data available to save.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        // Disable buttons while saving
         saveButton.setEnabled(false);
         discardButton.setEnabled(false);
         saveButton.setText("Saving...");
@@ -451,8 +475,6 @@ public class TrainingProgressDialog extends JDialog {
 
                     dispose();
                 } else {
-                    appendLog("Error saving model: " + error.getMessage());
-
                     JOptionPane.showMessageDialog(TrainingProgressDialog.this,
                             "Error saving model: " + error.getMessage(),
                             "Error",
@@ -471,7 +493,6 @@ public class TrainingProgressDialog extends JDialog {
                 JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            // Disable buttons while discarding
             discardButton.setEnabled(false);
             saveButton.setEnabled(false);
             discardButton.setText("Discarding...");
@@ -501,18 +522,11 @@ public class TrainingProgressDialog extends JDialog {
 
     private void onTrainingFinished(TrainingStatus status) {
         if ("completed".equals(status.getStatus())) {
-            trainingCompleted = true;
-
-            // Notify parent dialog that training is completed
             if (parentDialog != null) {
                 parentDialog.onTrainingCompleted();
             }
-
-            // Show Save/Discard buttons instead of popup
             showSaveDiscardButtons();
-
         } else {
-            // Training failed or cancelled - show close button
             showCloseButton();
         }
     }
@@ -524,7 +538,6 @@ public class TrainingProgressDialog extends JDialog {
             discardButton.setVisible(true);
 
             appendLog("\n=== Training Completed ===");
-            appendLog("Choose to Save the model or Discard it.");
 
             revalidate();
             repaint();
@@ -562,10 +575,6 @@ public class TrainingProgressDialog extends JDialog {
 
     public void setModelRequest(CreateModelRequest modelRequest) {
         this.modelRequest = modelRequest;
-    }
-
-    public boolean isTrainingCompleted() {
-        return trainingCompleted;
     }
 
     public boolean isModelSaved() {
